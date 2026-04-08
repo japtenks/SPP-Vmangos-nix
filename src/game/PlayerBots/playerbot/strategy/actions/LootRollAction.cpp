@@ -239,31 +239,12 @@ RollVote RollAction::CalculateRollVote(ItemQualifier& itemQualifier)
 
 bool RollAction::RollOnItemInSlot(RollVote vote, ObjectGuid lootGuid, uint32 slot)
 {
-    Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
-    if (!loot)
-        return false;
+    (void)vote;
+    (void)lootGuid;
+    (void)slot;
 
-    LootItem* item = ((slot < loot->items.size()) ? &loot->items[slot] : nullptr);
-    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(item->itemid);
-    if (!proto)
-        return false;
-
-    /* GroupLootRoll not in vmangos */
-    if (!nullptr)
-        return false;
-
-    bool didRoll = false;
-
-    if (didRoll)
-    {
-        LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
-
-        ActiveRolls::CleanUp(bot, lootRolls, lootGuid, slot);
-
-        SET_AI_VALUE(LootRollMap, "active rolls", lootRolls);
-    }
-
-    return didRoll;
+    // vMaNGOS does not expose the loot-roll managers this code path expects.
+    return false;
 }
 
 bool LootRollAction::Execute(Event& event)

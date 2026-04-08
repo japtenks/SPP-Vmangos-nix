@@ -1695,7 +1695,7 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                     if (lang == LANG_ADDON)
                         return;
 
-                    if (_strnicmp(message.c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).length()) == 0
+                    if (strnicmp(message.c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).length()) == 0
                         && (GetChatHelper()->ExtractAllItemIds(message).size() > 0 || GetChatHelper()->ExtractAllQuestIds(message).size() > 0)
                         && sPlayerbotAIConfig.toxicLinksRepliesChance)
                     {

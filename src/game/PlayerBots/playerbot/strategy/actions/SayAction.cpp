@@ -481,20 +481,20 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
 
     ChatChannelSource chatChannelSource = bot->GetPlayerbotAI()->GetChatChannelSource(bot, type, chanName);
 
-    if ((_strnicmp(msg.c_str(), "LFG", 3) == 0 || _strnicmp(msg.c_str(), "LFM", 3) == 0)
+    if ((strnicmp(msg.c_str(), "LFG", 3) == 0 || strnicmp(msg.c_str(), "LFM", 3) == 0)
         && HandleLFGQuestsReply(bot, chatChannelSource, msg, name))
     {
         return;
     }
 
-    if ((_strnicmp(msg.c_str(), "WTB", 3) == 0)
+    if ((strnicmp(msg.c_str(), "WTB", 3) == 0)
         && HandleWTBItemsReply(bot, chatChannelSource, msg, name))
     {
         return;
     }
 
     //toxic links
-    if (_strnicmp(msg.c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).length()) == 0
+    if (strnicmp(msg.c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).c_str(), (sPlayerbotAIConfig.toxicLinksPrefix).length()) == 0
         && (bot->GetPlayerbotAI()->GetChatHelper()->ExtractAllItemIds(msg).size() > 0 || bot->GetPlayerbotAI()->GetChatHelper()->ExtractAllQuestIds(msg).size() > 0))
     {
         HandleToxicLinksReply(bot, chatChannelSource, msg, name);

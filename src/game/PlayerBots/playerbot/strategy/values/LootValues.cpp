@@ -399,17 +399,14 @@ void ActiveRolls::CleanUp(Player* bot, LootRollMap& rollMap, ObjectGuid guid, ui
 			continue;
 		}
 
-		/* GroupLootRoll not in vmangos */
-		if (!nullptr)
-		{
-			roll = rollMap.erase(roll);
-			continue;
-		}
+        // vMaNGOS does not expose GroupLootRoll, so stale roll state cannot be resolved here.
+        roll = rollMap.erase(roll);
+        continue;
 
-		if(guid)
-		{
-			roll = rollMap.erase(roll);
-			continue;
+        if(guid)
+        {
+            roll = rollMap.erase(roll);
+            continue;
 		}
 
 		++roll;
