@@ -333,9 +333,9 @@ include_directories(
 
 if(BUILD_PLAYERBOTS)
   include_directories(
-    ${CMAKE_SOURCE_DIR}/src/game/Playerbots
-    ${CMAKE_SOURCE_DIR}/src/game/Playerbots/playerbot
-    ${CMAKE_SOURCE_DIR}/src/game/Playerbots/ahbot
+    ${CMAKE_SOURCE_DIR}/src/game/PlayerBots
+    ${CMAKE_SOURCE_DIR}/src/game/PlayerBots/playerbot
+    ${CMAKE_SOURCE_DIR}/src/game/PlayerBots/ahbot
   )
 endif()
 
@@ -404,4 +404,3 @@ else()
           )
   endif()
 endif()
-
