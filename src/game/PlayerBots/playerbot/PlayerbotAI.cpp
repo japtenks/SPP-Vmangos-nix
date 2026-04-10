@@ -6712,19 +6712,8 @@ bool PlayerbotAI::AddAura(Unit* unit, uint32 spellId)
     if (!spellInfo)
         return false;
 
-    bool hasApplicableEffect = false;
-    for (uint32 i = 0; i < MAX_EFFECT_INDEX; ++i)
-    {
-        uint8 eff = spellInfo->Effect[i];
-        if (eff == SPELL_EFFECT_APPLY_AURA ||
-            eff == SPELL_EFFECT_PERSISTENT_AREA_AURA ||
-            Spells::IsAreaAuraEffect(eff))
-        {
-            hasApplicableEffect = true;
-            break;
-        }
-    }
-    if (!hasApplicableEffect)
+    if (!spellInfo->IsSpellAppliesAura((1 << EFFECT_INDEX_0) | (1 << EFFECT_INDEX_1) | (1 << EFFECT_INDEX_2)) &&
+        !spellInfo->HasEffect(SPELL_EFFECT_PERSISTENT_AREA_AURA))
         return false;
 
     SpellAuraHolder* holder = CreateSpellAuraHolder(spellInfo, unit, unit, unit);
