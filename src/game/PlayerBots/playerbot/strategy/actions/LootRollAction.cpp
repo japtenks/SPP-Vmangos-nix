@@ -6,8 +6,56 @@
 
 using namespace ai;
 
+namespace
+{
+    struct RollContext
+    {
+        Player* bot = nullptr;
+        Group* group = nullptr;
+        Creature* creature = nullptr;
+        Loot* loot = nullptr;
+        LootItem* item = nullptr;
+        Roll* roll = nullptr;
+
+        bool HasPendingVote() const
+        {
+            if (!bot || !roll)
+                return false;
+
+            Roll::PlayerVote::const_iterator itr = roll->playerVote.find(bot->GetObjectGuid());
+            return itr != roll->playerVote.end() && itr->second == ROLL_NOT_EMITED_YET;
+        }
+    };
+
+    static RollContext ResolveRollContext(Player* bot, ObjectGuid const& lootGuid, uint32 slot)
+    {
+        RollContext context;
+        context.bot = bot;
+
+        if (!bot || !bot->GetGroup() || !bot->GetMap())
+            return context;
+
+        context.group = bot->GetGroup();
+        context.creature = bot->GetMap()->GetCreature(lootGuid);
+        if (!context.creature)
+            return context;
+
+        context.loot = &context.creature->loot;
+        if (slot >= context.loot->items.size())
+            return context;
+
+        context.item = &context.loot->items[slot];
+        context.roll = context.group->GetRollForLoot(lootGuid, slot);
+        if (!context.roll || !context.roll->isValid() || context.roll->getLoot() != context.loot)
+            context.roll = nullptr;
+
+        return context;
+    }
+}
+
 bool LootStartRollAction::Execute(Event& event)
 {
+    Player* bot = ai->GetBot();
     WorldPacket p(event.getPacket()); //WorldPacket packet for CMSG_LOOT_ROLL, (8+4+1)
     ObjectGuid creatureGuid;
     uint32 itemSlot;
@@ -35,20 +83,24 @@ bool LootStartRollAction::Execute(Event& event)
     p >> timeout;  // the countdown time to choose "need" or "greed"
 
     LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
+    ActiveRolls::CleanUp(bot, lootRolls);
 
-    if (lootRolls.find(creatureGuid) != lootRolls.end())
+    RollContext rollContext = ResolveRollContext(bot, creatureGuid, itemSlot);
+    if (!rollContext.roll || !rollContext.HasPendingVote() || !rollContext.item || rollContext.item->is_looted)
         return false;
 
-    Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
-    if (!loot)
+    if (!rollContext.creature->GetGroupLootTimer())
         return false;
 
-    for(uint8 i=0;i< MAX_NR_LOOT_ITEMS;i++)
-        if(nullptr /* GetRollForSlot not in vmangos */)
-            lootRolls.insert({ creatureGuid, i });
-        
-    ActiveRolls::CleanUp(bot,lootRolls);
+    if (rollContext.item->itemid != itemId || rollContext.item->randomPropertyId != randomPropertyId)
+        return false;
 
+    auto existing = lootRolls.equal_range(creatureGuid);
+    for (auto itr = existing.first; itr != existing.second; ++itr)
+        if (itr->second == itemSlot)
+            return false;
+
+    lootRolls.insert({ creatureGuid, itemSlot });
     SET_AI_VALUE(LootRollMap, "active rolls", lootRolls);
 
     return false;
@@ -164,16 +216,15 @@ bool RollAction::Execute(Event& event)
 
 ItemQualifier RollAction::GetRollItem(ObjectGuid lootGuid, uint32 slot)
 {
-    Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
-    if (!loot)
+    Player* bot = ai->GetBot();
+    RollContext rollContext = ResolveRollContext(bot, lootGuid, slot);
+    if (!rollContext.HasPendingVote() || !rollContext.item || rollContext.item->is_looted)
         return ItemQualifier();
 
-    LootItem* item = ((slot < loot->items.size()) ? &loot->items[slot] : nullptr);
-
-    if (!item)
+    if (rollContext.roll->itemid != rollContext.item->itemid || rollContext.roll->itemRandomPropId != rollContext.item->randomPropertyId)
         return ItemQualifier();
 
-    return ItemQualifier(item);
+    return ItemQualifier(rollContext.item);
 }
 
 RollVote RollAction::CalculateRollVote(ItemQualifier& itemQualifier)
@@ -239,12 +290,25 @@ RollVote RollAction::CalculateRollVote(ItemQualifier& itemQualifier)
 
 bool RollAction::RollOnItemInSlot(RollVote vote, ObjectGuid lootGuid, uint32 slot)
 {
-    (void)vote;
-    (void)lootGuid;
-    (void)slot;
+    Player* bot = ai->GetBot();
+    if (!bot || vote == ROLL_NOT_VALID)
+        return false;
 
-    // vMaNGOS does not expose the loot-roll managers this code path expects.
-    return false;
+    RollContext rollContext = ResolveRollContext(bot, lootGuid, slot);
+    if (!rollContext.HasPendingVote() || !rollContext.item || rollContext.item->is_looted)
+        return false;
+
+    if (rollContext.roll->itemid != rollContext.item->itemid || rollContext.roll->itemRandomPropId != rollContext.item->randomPropertyId)
+        return false;
+
+    if (!rollContext.group->CountRollVote(bot, lootGuid, slot, vote))
+        return false;
+
+    LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
+    ActiveRolls::CleanUp(bot, lootRolls, lootGuid, int32(slot));
+    SET_AI_VALUE(LootRollMap, "active rolls", lootRolls);
+
+    return true;
 }
 
 bool LootRollAction::Execute(Event& event)
@@ -272,7 +336,13 @@ bool LootRollAction::Execute(Event& event)
 
 bool AutoLootRollAction::Execute(Event& event)
 {
+    Player* bot = ai->GetBot();
     LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
+    ActiveRolls::CleanUp(bot, lootRolls);
+    SET_AI_VALUE(LootRollMap, "active rolls", lootRolls);
+
+    if (lootRolls.empty())
+        return false;
 
     auto currentRoll = lootRolls.begin();
 
@@ -290,5 +360,10 @@ bool AutoLootRollAction::Execute(Event& event)
 
 bool AutoLootRollAction::isPossible()
 {
-    return bot->GetGroup() && !AI_VALUE(LootRollMap, "active rolls").empty() && AI_VALUE(uint8, "bag space") < 100;
+    if (!bot->GetGroup())
+        return false;
+
+    LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
+    ActiveRolls::CleanUp(bot, lootRolls);
+    return !lootRolls.empty() && AI_VALUE(uint8, "bag space") < 100;
 }

@@ -924,16 +924,25 @@ void Group::MasterLoot(Creature* creature, Loot* loot, Player* player)
 
 bool Group::CountRollVote(Player* player, ObjectGuid const& lootedTarget, uint32 itemSlot, RollVote vote)
 {
-    Rolls::iterator rollI = RollId.begin();
-    for (; rollI != RollId.end(); ++rollI)
-        if ((*rollI)->isValid() && (*rollI)->lootedTargetGUID == lootedTarget && (*rollI)->itemSlot == itemSlot)
-            break;
+    Roll* roll = GetRollForLoot(lootedTarget, itemSlot);
+    if (!roll)
+        return false;
 
+    Rolls::iterator rollI = std::find(RollId.begin(), RollId.end(), roll);
     if (rollI == RollId.end())
         return false;
 
     CountRollVote(player->GetObjectGuid(), rollI, vote);    // result not related this function result meaning, ignore
     return true;
+}
+
+Roll* Group::GetRollForLoot(ObjectGuid const& lootedTarget, uint32 itemSlot)
+{
+    for (Roll* roll : RollId)
+        if (roll && roll->isValid() && roll->lootedTargetGUID == lootedTarget && roll->itemSlot == itemSlot)
+            return roll;
+
+    return nullptr;
 }
 
 bool Group::CountRollVote(ObjectGuid const& playerGUID, Rolls::iterator& rollI, RollVote vote)

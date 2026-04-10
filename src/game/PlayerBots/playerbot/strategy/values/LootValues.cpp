@@ -5,6 +5,47 @@
 
 using namespace ai;
 
+namespace
+{
+    struct ActiveRollState
+    {
+        Creature* creature = nullptr;
+        Loot* loot = nullptr;
+        LootItem* item = nullptr;
+        Roll* roll = nullptr;
+        RollVote playerVote = ROLL_NOT_VALID;
+    };
+
+    static ActiveRollState ResolveActiveRollState(Player* bot, ObjectGuid guid, uint32 slot)
+    {
+        ActiveRollState state;
+        if (!bot || !bot->GetGroup() || !bot->GetMap() || !guid.IsCreature())
+            return state;
+
+        state.creature = bot->GetMap()->GetCreature(guid);
+        if (!state.creature)
+            return state;
+
+        state.loot = &state.creature->loot;
+        if (slot >= state.loot->items.size())
+            return state;
+
+        state.item = &state.loot->items[slot];
+        state.roll = bot->GetGroup()->GetRollForLoot(guid, slot);
+        if (!state.roll || !state.roll->isValid() || state.roll->getLoot() != state.loot)
+        {
+            state.roll = nullptr;
+            return state;
+        }
+
+        Roll::PlayerVote::const_iterator itr = state.roll->playerVote.find(bot->GetObjectGuid());
+        if (itr != state.roll->playerVote.end())
+            state.playerVote = itr->second;
+
+        return state;
+    }
+}
+
 
 /* LootAccess member functions removed - not applicable in vmangos */
 
@@ -376,81 +417,62 @@ bool ShouldLootObject::Calculate()
 	return false;
 }
 
-void ActiveRolls::CleanUp(Player* bot, LootRollMap& rollMap, ObjectGuid guid, uint32 slot)
+void ActiveRolls::CleanUp(Player* bot, LootRollMap& rollMap, ObjectGuid guid, int32 slot)
 {
-	for (auto roll = rollMap.begin(); roll != rollMap.end();)
-	{
-		if (guid && roll->first != guid)
-		{
-			++roll;
-			continue;
-		}
+    for (auto roll = rollMap.begin(); roll != rollMap.end();)
+    {
+        if (guid && roll->first != guid)
+        {
+            ++roll;
+            continue;
+        }
 
-		if (slot && roll->second != slot)
-		{
-			++roll;
-			continue;
-		}
+        if (slot >= 0 && roll->second != uint32(slot))
+        {
+            ++roll;
+            continue;
+        }
 
-		Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
-		if (!loot)
-		{
-			roll = rollMap.erase(roll);
-			continue;
-		}
-
-        // vMaNGOS does not expose GroupLootRoll, so stale roll state cannot be resolved here.
-        roll = rollMap.erase(roll);
-        continue;
-
-        if(guid)
+        ActiveRollState state = ResolveActiveRollState(bot, roll->first, roll->second);
+        if (!state.creature || !state.creature->GetGroupLootTimer() || !state.roll ||
+            !state.item || state.item->is_looted || state.playerVote != ROLL_NOT_EMITED_YET)
         {
             roll = rollMap.erase(roll);
             continue;
-		}
+        }
 
-		++roll;
-	}
+        ++roll;
+    }
 }
 
 std::string ActiveRolls::Format()
 {
-	std::ostringstream out;
+    std::ostringstream out;
+    Player* bot = ai->GetBot();
 
-	for (auto& roll : value)
-	{
-		WorldObject* wo = ai->GetWorldObject(roll.first);
+    for (auto& roll : value)
+    {
+        ActiveRollState state = ResolveActiveRollState(bot, roll.first, roll.second);
+        if (state.creature)
+            out << state.creature->GetName();
+        else
+            out << roll.first;
 
-		if (wo)
-			out << wo->GetName();
-		else
-			out << roll.first;
+        std::string itemLink;
+        if (state.item)
+        {
+            const ItemPrototype* proto = sObjectMgr.GetItemPrototype(state.item->itemid);
+            if (proto)
+                itemLink = ChatHelper::formatItem(proto);
+        }
 
-		std::string itemLink;
+        if (itemLink.empty())
+            out << roll.second;
+        else
+            out << itemLink;
 
-		Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
-		if (loot)
-		{
-			LootItem* item = ((roll.second < loot->items.size()) ? &loot->items[roll.second] : nullptr);
+        out << ',';
+    }
 
-			if (item)
-			{
-				const ItemPrototype* proto = sObjectMgr.GetItemPrototype(item->itemid);
-
-				if (proto)
-				{
-					itemLink = ChatHelper::formatItem(proto);
-				}
-			}
-		}
-
-		if (itemLink.empty())
-			out << roll.second;
-		else
-			out << itemLink;
-
-		out << ",";
-	}
-
-	return out.str();
+    return out.str();
 }

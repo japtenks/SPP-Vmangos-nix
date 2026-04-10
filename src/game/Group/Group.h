@@ -362,6 +362,7 @@ class Group
         void NeedBeforeGreed(Creature* creature, Loot* loot);
         void MasterLoot(Creature* creature, Loot* loot, Player* player);
         bool CountRollVote(Player* player, ObjectGuid const& lootedTarget, uint32 itemSlot, RollVote vote);
+        Roll* GetRollForLoot(ObjectGuid const& lootedTarget, uint32 itemSlot);
         void StartLootRoll(Creature* lootTarget, LootMethod method, Loot* loot, uint8 itemSlot);
         void EndRoll(Loot* loot);
 
