@@ -1,6 +1,7 @@
 // Ported from CMaNGOS AuctionHouseBot to VMaNGOS.
 
 #include "AuctionHouseBot.h"
+#include "AuctionHouse/AhBotRuntime.h"
 #include "ObjectMgr.h"
 #include "Log.h"
 #include "Policies/Singleton.h"
@@ -234,25 +235,12 @@ void AuctionHouseBot::Update()
                 if (randomPropertyId)
                     item->SetItemRandomProperties(randomPropertyId);
 
-                AuctionEntry* auctionEntry = new AuctionEntry;
-                auctionEntry->Id = sObjectMgr.GenerateAuctionID();
-                auctionEntry->itemGuidLow = item->GetObjectGuid().GetCounter();
-                auctionEntry->itemTemplate = item->GetEntry();
-                auctionEntry->owner = 0;
-                auctionEntry->ownerAccount = 0;
-                auctionEntry->startbid = bidPrice;
-                auctionEntry->bidder = 0;
-                auctionEntry->bid = 0;
-                auctionEntry->buyout = buyoutPrice;
-                auctionEntry->depositTime = time(nullptr);
-                auctionEntry->expireTime = time(nullptr) + auctionTime;
-                auctionEntry->deposit = 0;
-                auctionEntry->auctionHouseEntry = ahEntry;
-
-                sAuctionMgr.AddAItem(item);
-                auctionHouse->AddAuction(auctionEntry);
-                item->SaveToDB();
-                auctionEntry->SaveToDB();
+                Player* seller = AhBotRuntime::SelectAhBotSeller(prototype, count, ahEntry);
+                if (!seller || !AhBotRuntime::CreateAhBotStockAuction(seller, item, bidPrice, buyoutPrice, auctionTime, ahEntry))
+                {
+                    delete item;
+                    continue;
+                }
             }
         }
     }
@@ -286,18 +274,12 @@ void AuctionHouseBot::Update()
             }
             else if (buyItemCheck > bidPrice)
             {
-                auction->bidder = 0;
-                auction->bid = bidPrice;
-                CharacterDatabase.PExecute("UPDATE auction SET buyer_guid = '%u', last_bid = '%u' WHERE id = '%u'",
-                    auction->bidder, auction->bid, auction->Id);
+                AhBotRuntime::TryPlaceAhBotBid(auction, bidPrice);
             }
         }
         for (auto auction : buyoutAuctions)
         {
-            auction->bidder = 0;
-            auction->bid = auction->buyout;
-            CharacterDatabase.PExecute("UPDATE auction SET buyer_guid = '%u', last_bid = '%u' WHERE id = '%u'",
-                auction->bidder, auction->bid, auction->Id);
+            AhBotRuntime::TryPlaceAhBotBuyout(auction);
         }
     }
 }
@@ -323,7 +305,7 @@ void AuctionHouseBot::Rebuild(bool all)
         for (AuctionHouseObject::AuctionEntryMap::const_iterator itr = auctions.begin(); itr != auctions.end(); ++itr)
         {
             AuctionEntry* entry = itr->second;
-            if (!entry->owner)
+            if (!entry->owner || AhBotRuntime::IsAhBotCreatedAuction(entry->Id))
             {
                 if (all || entry->bid == 0)
                     entry->expireTime = sWorld.GetGameTime();
@@ -361,7 +343,7 @@ void AuctionHouseBot::PrepareStatusInfos(AuctionHouseBotStatusInfo& statusInfo) 
             if (Item* item = sAuctionMgr.GetAItem(entry->itemGuidLow))
             {
                 ItemPrototype const* prototype = item->GetProto();
-                if (!entry->owner)
+                if (!entry->owner || AhBotRuntime::IsAhBotCreatedAuction(entry->Id))
                 {
                     if (prototype->Quality < MAX_ITEM_QUALITY)
                         ++statusInfo[i].QualityInfo[prototype->Quality];

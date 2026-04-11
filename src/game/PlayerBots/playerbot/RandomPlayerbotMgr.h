@@ -8,13 +8,18 @@
 #include "WorldPosition.h"
 #include <map>
 #include <list>
+#include <mutex>
 #include <shared_mutex>
+#include <unordered_map>
 
 class WorldPacket;
 class Player;
 class Unit;
 class Object;
 class Item;
+struct AuctionEntry;
+struct AuctionHouseEntry;
+struct ItemPrototype;
 
 class CachedEvent
 {
@@ -167,6 +172,18 @@ public:
         bool arenaTeamsDeleted, guildsDeleted = false;
 
         std::mutex m_ahActionMutex;
+        Player* GetRandomAhBuyer(AuctionEntry const* auction, uint32 requiredCopper);
+        bool CanAhBotAffordBid(Player* bot, uint32 requiredCopper) const;
+        uint32 GetAhBotReservedCopper(uint32 botGuidLow) const;
+        bool ReserveAhBotCopper(uint32 botGuidLow, uint32 amount, uint32 auctionId);
+        void ReleaseAhBotCopper(uint32 botGuidLow, uint32 auctionId);
+        void FinalizeAhBotCopper(uint32 botGuidLow, uint32 auctionId, uint32 finalAmount);
+        void ReleaseAhBotCopperForAuction(uint32 auctionId);
+        bool HasAhReservation(uint32 auctionId) const;
+        Player* GetRandomAhSeller(ItemPrototype const* proto, uint32 stackCount, AuctionHouseEntry const* ahEntry);
+        bool CanAhBotOwnAuction(Player* bot, AuctionHouseEntry const* ahEntry) const;
+        void OnAhBotAuctionCreated(AuctionEntry const* auction);
+        void OnAhBotAuctionRemoved(AuctionEntry const* auction);
 
         const std::vector<AuctionEntry>& GetAhPrices(uint32 itemId) {
             static const std::vector<AuctionEntry> emptyVector; // Avoid returning dangling refs
@@ -258,6 +275,11 @@ public:
 
         //                   itemId,             buyout, count
         std::unordered_map < uint32, std::vector<AuctionEntry>> ahMirror;
+        mutable std::mutex m_ahBidderStateMutex;
+        std::unordered_map<uint32, uint32> m_ahBotReservedCopperByBot;
+        std::unordered_map<uint32, std::pair<uint32, uint32>> m_ahReservationByAuction;
+        mutable std::mutex m_ahSellerStateMutex;
+        std::unordered_map<uint32, uint32> m_ahListedAuctionCountByBot;
 };
 
 #define sRandomPlayerbotMgr RandomPlayerbotMgr::instance()

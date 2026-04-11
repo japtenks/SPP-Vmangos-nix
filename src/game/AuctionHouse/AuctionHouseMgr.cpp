@@ -20,6 +20,8 @@
  */
 
 #include "AuctionHouseMgr.h"
+#include "AhBotRuntime.h"
+#include "playerbot/RandomPlayerbotMgr.h"
 #include "Database/DatabaseEnv.h"
 #include "DBCStores.h"
 #include "AccountMgr.h"
@@ -278,6 +280,40 @@ void AuctionHouseMgr::SendAuctionExpiredMail(AuctionEntry* auction)
         RemoveAItem(pItem->GetGUIDLow());                   // we have to remove the item, before we delete it !!
         delete pItem;
     }
+}
+
+void AuctionHouseMgr::OnAuctionBidReplaced(AuctionEntry const* auction)
+{
+    if (!auction)
+        return;
+
+    sRandomPlayerbotMgr.ReleaseAhBotCopperForAuction(auction->Id);
+}
+
+void AuctionHouseMgr::OnAuctionExpiredOrCancelled(AuctionEntry const* auction)
+{
+    if (!auction)
+        return;
+
+    sRandomPlayerbotMgr.ReleaseAhBotCopperForAuction(auction->Id);
+}
+
+void AuctionHouseMgr::OnAuctionSaleFinalized(AuctionEntry const* auction)
+{
+    if (!auction || !sRandomPlayerbotMgr.HasAhReservation(auction->Id))
+        return;
+
+    sRandomPlayerbotMgr.FinalizeAhBotCopper(auction->bidder, auction->Id, auction->bid);
+}
+
+void AuctionHouseMgr::OnAhBotAuctionCreated(AuctionEntry const* auction)
+{
+    sRandomPlayerbotMgr.OnAhBotAuctionCreated(auction);
+}
+
+void AuctionHouseMgr::OnAhBotAuctionRemoved(AuctionEntry const* auction)
+{
+    sRandomPlayerbotMgr.OnAhBotAuctionRemoved(auction);
 }
 
 AuctionHouseObject* AuctionHouseMgr::MakeNewAuctionHouseObject()
@@ -641,7 +677,10 @@ void AuctionHouseObject::Update()
         {
             // Either cancel the auction if there was no bidder
             if (entry->bidder == 0)
+            {
                 sAuctionMgr.SendAuctionExpiredMail(entry);
+                sAuctionMgr.OnAuctionExpiredOrCancelled(entry);
+            }
             // Or perform the transaction
             else
             {
@@ -659,8 +698,15 @@ void AuctionHouseObject::Update()
                 //we should send an "item sold" message if the seller is online
                 //we send the item to the winner
                 //we send the money to the seller
+                sAuctionMgr.OnAuctionSaleFinalized(entry);
                 sAuctionMgr.SendAuctionSuccessfulMail(entry);
                 sAuctionMgr.SendAuctionWonMail(entry);
+            }
+
+            if (AhBotRuntime::IsAhBotCreatedAuction(entry->Id))
+            {
+                sAuctionMgr.OnAhBotAuctionRemoved(entry);
+                AhBotRuntime::UntrackAhBotCreatedAuction(entry->Id);
             }
 
             // In any case clear the auction

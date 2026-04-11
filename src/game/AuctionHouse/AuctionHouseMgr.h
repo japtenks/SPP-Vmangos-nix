@@ -172,6 +172,11 @@ class AuctionHouseMgr
         void SendAuctionWonMail(AuctionEntry* auction);
         void SendAuctionSuccessfulMail(AuctionEntry* auction);
         void SendAuctionExpiredMail(AuctionEntry* auction);
+        void OnAuctionBidReplaced(AuctionEntry const* auction);
+        void OnAuctionExpiredOrCancelled(AuctionEntry const* auction);
+        void OnAuctionSaleFinalized(AuctionEntry const* auction);
+        void OnAhBotAuctionCreated(AuctionEntry const* auction);
+        void OnAhBotAuctionRemoved(AuctionEntry const* auction);
         static uint32 GetAuctionDeposit(AuctionHouseEntry const* entry, uint32 time, Item* pItem);
 
         static uint32 GetAuctionHouseId(uint32 factionTemplateId);

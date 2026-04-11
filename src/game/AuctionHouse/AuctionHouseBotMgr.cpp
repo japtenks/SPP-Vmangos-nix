@@ -1,6 +1,7 @@
 #include "Database/DatabaseEnv.h"
 #include "Log.h"
 #include "Policies/SingletonImp.h"
+#include "AhBotRuntime.h"
 #include "Item.h"
 #include "AuctionHouseMgr.h"
 #include "ObjectMgr.h"
@@ -159,27 +160,12 @@ void AuctionHouseBotMgr::AddItem(AuctionHouseBotEntry e, AuctionHouseObject *auc
     }
     item->SetCount(e.stack);
 
-    uint32 dep = sAuctionMgr.GetAuctionDeposit(m_auctionHouseEntry, etime, item);
-
-    AuctionEntry* auctionEntry       = new AuctionEntry;
-    auctionEntry->Id                 = sObjectMgr.GenerateAuctionID();
-    auctionEntry->auctionHouseEntry  = m_auctionHouseEntry;
-    auctionEntry->itemGuidLow        = item->GetGUIDLow();
-    auctionEntry->itemTemplate       = item->GetEntry();
-    auctionEntry->owner              = 0;
-    auctionEntry->startbid           = e.bid;
-    auctionEntry->buyout             = e.buyout;
-    auctionEntry->bidder             = 0;
-    auctionEntry->bid                = 0;
-    auctionEntry->deposit            = dep;
-    auctionEntry->depositTime        = time(nullptr);
-    auctionEntry->expireTime         = (time_t) etime + time(nullptr);
-
-    item->SaveToDB();
-
-    sAuctionMgr.AddAItem(item);
-    auctionHouse->AddAuction(auctionEntry);
-    auctionEntry->SaveToDB();
+    Player* seller = AhBotRuntime::SelectAhBotSeller(prototype, e.stack, m_auctionHouseEntry);
+    if (!seller || !AhBotRuntime::CreateAhBotStockAuction(seller, item, e.bid, e.buyout, etime, m_auctionHouseEntry))
+    {
+        delete item;
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AHBot::AddItem() : Cannot assign seller for item %u.", e.item);
+    }
 }
 
 bool ChatHandler::HandleAHBotUpdateCommand(char *args)

@@ -4,6 +4,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "strategy/values/LastMovementValue.h"
+#include "AuctionHouseMgr.h"
 #include "AccountMgr.h"
 #include "ObjectMgr.h"
 #include "Database/DatabaseEnv.h"
@@ -38,6 +39,7 @@
 
 #include "playerbot/TravelMgr.h"
 #include <iomanip>
+#include <limits>
 #include <float.h>
 
 #if PLATFORM == PLATFORM_WINDOWS
@@ -3469,6 +3471,198 @@ Player* RandomPlayerbotMgr::GetPlayer(uint32 playerGuid)
     std::shared_lock<std::shared_mutex> lock(m_playersMutex);
     PlayerBotMap::const_iterator it = players.find(playerGuid);
     return (it == players.end()) ? nullptr : it->second ? it->second : nullptr;
+}
+
+Player* RandomPlayerbotMgr::GetRandomAhBuyer(AuctionEntry const* auction, uint32 requiredCopper)
+{
+    (void)auction;
+
+    std::vector<Player*> candidates;
+    ForEachPlayerbot([&](Player* bot)
+    {
+        if (!bot || !(sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()) || sPlayerbotAIConfig.IsFreeAltBot(bot)) || !bot->GetPlayerbotAI() || !bot->GetSession())
+            return;
+
+        if (!bot->IsInWorld() || !bot->IsAlive() || bot->IsInCombat() || bot->GetSession()->IsLogingOut())
+            return;
+
+        if (!CanAhBotAffordBid(bot, requiredCopper))
+            return;
+
+        candidates.push_back(bot);
+    });
+
+    if (candidates.empty())
+        return nullptr;
+
+    return candidates[urand(0, candidates.size() - 1)];
+}
+
+bool RandomPlayerbotMgr::CanAhBotAffordBid(Player* bot, uint32 requiredCopper) const
+{
+    if (!bot)
+        return false;
+
+    uint64 money = bot->GetMoney();
+    uint64 reserved = GetAhBotReservedCopper(bot->GetGUIDLow());
+    if (money < reserved)
+        return false;
+
+    return money - reserved >= requiredCopper;
+}
+
+uint32 RandomPlayerbotMgr::GetAhBotReservedCopper(uint32 botGuidLow) const
+{
+    std::lock_guard<std::mutex> guard(m_ahBidderStateMutex);
+    auto itr = m_ahBotReservedCopperByBot.find(botGuidLow);
+    return itr == m_ahBotReservedCopperByBot.end() ? 0 : itr->second;
+}
+
+bool RandomPlayerbotMgr::ReserveAhBotCopper(uint32 botGuidLow, uint32 amount, uint32 auctionId)
+{
+    std::lock_guard<std::mutex> guard(m_ahBidderStateMutex);
+    if (m_ahReservationByAuction.find(auctionId) != m_ahReservationByAuction.end())
+        return false;
+
+    m_ahReservationByAuction[auctionId] = std::make_pair(botGuidLow, amount);
+    m_ahBotReservedCopperByBot[botGuidLow] += amount;
+    return true;
+}
+
+void RandomPlayerbotMgr::ReleaseAhBotCopper(uint32 botGuidLow, uint32 auctionId)
+{
+    std::lock_guard<std::mutex> guard(m_ahBidderStateMutex);
+    auto reservationItr = m_ahReservationByAuction.find(auctionId);
+    if (reservationItr == m_ahReservationByAuction.end())
+        return;
+
+    uint32 reservedBotGuid = reservationItr->second.first;
+    uint32 reservedAmount = reservationItr->second.second;
+    if (botGuidLow && botGuidLow != reservedBotGuid)
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AHBot reservation mismatch for auction %u: expected bidder %u, got %u", auctionId, reservedBotGuid, botGuidLow);
+
+    auto botItr = m_ahBotReservedCopperByBot.find(reservedBotGuid);
+    if (botItr != m_ahBotReservedCopperByBot.end())
+    {
+        botItr->second = botItr->second > reservedAmount ? botItr->second - reservedAmount : 0;
+        if (!botItr->second)
+            m_ahBotReservedCopperByBot.erase(botItr);
+    }
+
+    m_ahReservationByAuction.erase(reservationItr);
+}
+
+void RandomPlayerbotMgr::FinalizeAhBotCopper(uint32 botGuidLow, uint32 auctionId, uint32 finalAmount)
+{
+    ReleaseAhBotCopper(botGuidLow, auctionId);
+
+    Player* bot = GetPlayerBot(botGuidLow);
+    if (!bot || !bot->GetSession() || !bot->IsInWorld())
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AHBot bidder %u went offline before auction %u finalized; skipping gold deduction", botGuidLow, auctionId);
+        return;
+    }
+
+    if (bot->GetMoney() < finalAmount)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AHBot bidder %u has insufficient gold to finalize auction %u (%u copper required, %u copper available)", botGuidLow, auctionId, finalAmount, bot->GetMoney());
+        return;
+    }
+
+    if (finalAmount)
+    {
+        bot->ModifyMoney(-int32(finalAmount));
+        CharacterDatabase.BeginTransaction(bot->GetGUIDLow());
+        bot->SaveInventoryAndGoldToDB();
+        CharacterDatabase.CommitTransaction();
+    }
+}
+
+void RandomPlayerbotMgr::ReleaseAhBotCopperForAuction(uint32 auctionId)
+{
+    ReleaseAhBotCopper(0, auctionId);
+}
+
+bool RandomPlayerbotMgr::HasAhReservation(uint32 auctionId) const
+{
+    std::lock_guard<std::mutex> guard(m_ahBidderStateMutex);
+    return m_ahReservationByAuction.find(auctionId) != m_ahReservationByAuction.end();
+}
+
+Player* RandomPlayerbotMgr::GetRandomAhSeller(ItemPrototype const* proto, uint32 stackCount, AuctionHouseEntry const* ahEntry)
+{
+    (void)proto;
+    (void)stackCount;
+
+    std::vector<Player*> candidates;
+    uint32 lowestCount = std::numeric_limits<uint32>::max();
+    ForEachPlayerbot([&](Player* bot)
+    {
+        if (!CanAhBotOwnAuction(bot, ahEntry))
+            return;
+
+        uint32 activeListings = 0;
+        {
+            std::lock_guard<std::mutex> guard(m_ahSellerStateMutex);
+            auto itr = m_ahListedAuctionCountByBot.find(bot->GetGUIDLow());
+            if (itr != m_ahListedAuctionCountByBot.end())
+                activeListings = itr->second;
+        }
+
+        if (activeListings < lowestCount)
+        {
+            lowestCount = activeListings;
+            candidates.clear();
+        }
+
+        if (activeListings == lowestCount)
+            candidates.push_back(bot);
+    });
+
+    if (candidates.empty())
+        return nullptr;
+
+    return candidates[urand(0, candidates.size() - 1)];
+}
+
+bool RandomPlayerbotMgr::CanAhBotOwnAuction(Player* bot, AuctionHouseEntry const* ahEntry) const
+{
+    if (!bot || !(sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()) || sPlayerbotAIConfig.IsFreeAltBot(bot)) || !bot->GetPlayerbotAI() || !bot->GetSession())
+        return false;
+
+    if (!bot->IsInWorld() || !bot->IsAlive() || bot->GetSession()->IsLogingOut())
+        return false;
+
+    uint32 auctionHouseTeam = ahEntry ? AuctionHouseMgr::GetAuctionHouseTeam(ahEntry) : 0;
+    if (auctionHouseTeam && bot->GetTeam() != auctionHouseTeam)
+        return false;
+
+    return true;
+}
+
+void RandomPlayerbotMgr::OnAhBotAuctionCreated(AuctionEntry const* auction)
+{
+    if (!auction || !auction->owner)
+        return;
+
+    std::lock_guard<std::mutex> guard(m_ahSellerStateMutex);
+    ++m_ahListedAuctionCountByBot[auction->owner];
+}
+
+void RandomPlayerbotMgr::OnAhBotAuctionRemoved(AuctionEntry const* auction)
+{
+    if (!auction || !auction->owner)
+        return;
+
+    std::lock_guard<std::mutex> guard(m_ahSellerStateMutex);
+    auto itr = m_ahListedAuctionCountByBot.find(auction->owner);
+    if (itr == m_ahListedAuctionCountByBot.end())
+        return;
+
+    if (itr->second > 1)
+        --itr->second;
+    else
+        m_ahListedAuctionCountByBot.erase(itr);
 }
 
 void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)

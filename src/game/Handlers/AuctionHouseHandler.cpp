@@ -28,6 +28,7 @@
 #include "ObjectGuid.h"
 #include "Player.h"
 #include "AuctionHouseMgr.h"
+#include "AhBotRuntime.h"
 #include "TransactionLog.h"
 #include "Mail.h"
 #include "Util.h"
@@ -520,7 +521,10 @@ void WorldSession::HandleAuctionPlaceBid(WorldPackets::AuctionHouse::AuctionPlac
         {
             pl->LogModifyMoney(-int32(packet.price), "AuctionBid", ObjectGuid(HIGHGUID_PLAYER, auction->owner), auction->itemTemplate);
             if (auction->bidder)                            // return money to old bidder if present
+            {
+                sAuctionMgr.OnAuctionBidReplaced(auction);
                 SendAuctionOutbiddedMail(auction);
+            }
         }
 
         auction->bidder = pl->GetGUIDLow();
@@ -542,11 +546,15 @@ void WorldSession::HandleAuctionPlaceBid(WorldPackets::AuctionHouse::AuctionPlac
         {
             pl->LogModifyMoney(-int32(auction->buyout), "AuctionBuyout", ObjectGuid(HIGHGUID_PLAYER, auction->owner), auction->itemTemplate);
             if (auction->bidder)                            // return money to old bidder if present
+            {
+                sAuctionMgr.OnAuctionBidReplaced(auction);
                 SendAuctionOutbiddedMail(auction);
+            }
         }
 
         auction->bidder = pl->GetGUIDLow();
         auction->bid = auction->buyout;
+        sAuctionMgr.OnAuctionSaleFinalized(auction);
 
         PlayerTransactionData data;
         data.type = "Buyout";
@@ -563,6 +571,12 @@ void WorldSession::HandleAuctionPlaceBid(WorldPackets::AuctionHouse::AuctionPlac
         sAuctionMgr.SendAuctionWonMail(auction);
 
         SendAuctionCommandResult(auction, AUCTION_BID_PLACED, AUCTION_OK);
+
+        if (AhBotRuntime::IsAhBotCreatedAuction(auction->Id))
+        {
+            sAuctionMgr.OnAhBotAuctionRemoved(auction);
+            AhBotRuntime::UntrackAhBotCreatedAuction(auction->Id);
+        }
 
         sAuctionMgr.RemoveAItem(auction->itemGuidLow);
         auctionHouse->RemoveAuction(auction);
@@ -596,6 +610,7 @@ void WorldSession::HandleAuctionRemoveItem(WorldPackets::AuctionHouse::AuctionRe
         Item *pItem = sAuctionMgr.GetAItem(auction->itemGuidLow);
         if (pItem)
         {
+            sAuctionMgr.OnAuctionExpiredOrCancelled(auction);
             if (auction->bidder > 0)                        // If we have a bidder, we have to send him the money he paid
             {
                 uint32 auctionCut = auction->GetAuctionCut();
@@ -636,6 +651,13 @@ void WorldSession::HandleAuctionRemoveItem(WorldPackets::AuctionHouse::AuctionRe
     auction->DeleteFromDB();
     pl->SaveInventoryAndGoldToDB();
     CharacterDatabase.CommitTransaction();
+
+    if (AhBotRuntime::IsAhBotCreatedAuction(auction->Id))
+    {
+        sAuctionMgr.OnAhBotAuctionRemoved(auction);
+        AhBotRuntime::UntrackAhBotCreatedAuction(auction->Id);
+    }
+
     sAuctionMgr.RemoveAItem(auction->itemGuidLow);
     auctionHouse->RemoveAuction(auction);
     delete auction;

@@ -66,6 +66,7 @@ set (game_SRCS
     AI/ScriptedPetAI.cpp
     AI/TotemAI.cpp
     Anticheat/Anticheat.cpp
+    AuctionHouse/AhBotRuntime.cpp
     AuctionHouse/AuctionHouseBotMgr.cpp
     AuctionHouse/AuctionHouseMgr.cpp
     AuctionHouseBot/AuctionHouseBot.cpp
