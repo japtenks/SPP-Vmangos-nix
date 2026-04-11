@@ -359,6 +359,18 @@ bool UseAction::Execute(Event& event)
     return false;
 }
 
+Item* UseAction::GetInventoryItem(std::string const& itemName) const
+{
+    std::list<Item*> items = AI_VALUE2(std::list<Item*>, "inventory items", itemName);
+    return items.empty() ? nullptr : items.front();
+}
+
+bool UseAction::UseInventoryItem(Player* requester, std::string const& itemName)
+{
+    Item* item = GetInventoryItem(itemName);
+    return item ? UseItem(requester, item->GetEntry()) : false;
+}
+
 bool UseAction::UseItem(Player* requester, uint32 itemId, Unit* target)
 {
     return UseItemInternal(requester, itemId, target, nullptr, nullptr);

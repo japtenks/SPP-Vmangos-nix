@@ -44,6 +44,8 @@ namespace ai
         bool UseItem(Player* requester, uint32 itemId, GameObject* target);
         bool UseItem(Player* requester, uint32 itemId, Item* target);
         bool UseGameObject(Player* requester, Event& event, GameObject* gameObject);
+        Item* GetInventoryItem(std::string const& itemName) const;
+        bool UseInventoryItem(Player* requester, std::string const& itemName);
         
         //void TellConsumableUse(Player* requester, Item* item, std::string action, float percent);
 
@@ -657,60 +659,17 @@ namespace ai
             if (!bot->GetPowerType() == POWER_MANA)
                 return false;
 
-            if (ai->HasCheat(BotCheatMask::item))
-            {
-                if (bot->IsNonMeleeSpellCasted(true))
-                    return false;
-
-                bot->ClearUnitState(UNIT_STATE_CHASE);
-                bot->ClearUnitState(UNIT_STATE_FOLLOW);
-
-                if (ai->GetBot()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
-                {
-                    ai->StopMoving();
-                }
-
-                if (sServerFacade.isMoving(bot))
-                {
-                    ai->StopMoving();
-                    SetDuration(sPlayerbotAIConfig.globalCoolDown);
-                    return false;
-                }
-
-                bot->SetStandState(UNIT_STAND_STATE_SIT);
-                ai->InterruptSpell();
-
-                float drinkDuration = AI_VALUE(float, "drink duration");
-
-                const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(24355);
-                if (!pSpellInfo)
-                    return false;
-
-                ai->Unmount();
-
-                ai->CastSpell(24355, bot);
-                SetDuration(drinkDuration);
-                bot->RemoveSpellCooldown(*pSpellInfo);
-
-                // Eat and drink at the same time
-
-                if (AI_VALUE(bool, "should eat"))
-                {
-                    const SpellEntry* pSpellInfo2 = sServerFacade.LookupSpellInfo(24005);
-                    if (pSpellInfo2)
-                    {
-                        ai->AddAura(bot, 24005);
-                        bot->RemoveSpellCooldown(*pSpellInfo2);
-                    }
-                }
-
-                return true;
-            }
-
-            if (AI_VALUE2(std::list<Item*>, "inventory items", name).empty())
+            Player* requester = event.getOwner();
+            if (!GetInventoryItem(name))
                 return false;
 
-            return UseAction::Execute(event);
+            if (!UseInventoryItem(requester, name))
+                return false;
+
+            if (AI_VALUE(bool, "should eat"))
+                UseInventoryItem(requester, "food");
+
+            return true;
         }
 
         bool isUseful() override
@@ -734,59 +693,17 @@ namespace ai
             if (sServerFacade.IsInCombat(bot))
                 return false;
 
-            if (ai->HasCheat(BotCheatMask::item))
-            {
-                if (bot->IsNonMeleeSpellCasted(true))
-                    return false;
-
-                bot->ClearUnitState(UNIT_STATE_CHASE);
-                bot->ClearUnitState(UNIT_STATE_FOLLOW);
-
-                if (ai->GetBot()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
-                {
-                    ai->StopMoving();
-                }
-
-                if (sServerFacade.isMoving(bot))
-                {
-                    ai->StopMoving();
-                    SetDuration(sPlayerbotAIConfig.globalCoolDown);
-                    return false;
-                }
-
-                bot->SetStandState(UNIT_STAND_STATE_SIT);
-                ai->InterruptSpell();
-
-                float eatDuration = AI_VALUE(float, "eat duration");
-
-                const SpellEntry* pSpellInfo = sServerFacade.LookupSpellInfo(24005);
-                if (!pSpellInfo)
-                    return false;
-
-                ai->Unmount();
-
-                ai->CastSpell(24005, bot);
-                SetDuration(eatDuration);
-                bot->RemoveSpellCooldown(*pSpellInfo);
-
-                // Eat and drink at the same time
-                if (AI_VALUE(bool, "should drink"))
-                {
-                    const SpellEntry* pSpellInfo2 = sServerFacade.LookupSpellInfo(24355);
-                    if (pSpellInfo2)
-                    {
-                        ai->AddAura(bot, 24355);
-                        bot->RemoveSpellCooldown(*pSpellInfo2);
-                    }
-                }
-
-                return true;
-            }
-
-            if (AI_VALUE2(std::list<Item*>, "inventory items", name).empty())
+            Player* requester = event.getOwner();
+            if (!GetInventoryItem(name))
                 return false;
 
-            return UseAction::Execute(event);
+            if (!UseInventoryItem(requester, name))
+                return false;
+
+            if (AI_VALUE(bool, "should drink"))
+                UseInventoryItem(requester, "drink");
+
+            return true;
         }
 
         bool isUseful() override
