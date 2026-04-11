@@ -2,6 +2,7 @@
 #include "Category.h"
 #include "ItemBag.h"
 #include "AhBotConfig.h"
+#include "AhBotEconomy.h"
 #include "Database/DatabaseEnv.h"
 #include "playerbot/RandomItemMgr.h"
 #include "ahbot/AhBot.h"
@@ -36,6 +37,13 @@ double PricingStrategy::CalculatePrice(std::ostringstream *explain, ...)
 
 uint32 PricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket, std::ostringstream *explain)
 {
+    PostingPlan plan = sAhBotEconomy.BuildPostingPlan(auctionHouse, category, proto, category->GetStackCount(proto), auctionbot.SelectRandomBidder(auctionHouse));
+    if (!plan.allowed)
+    {
+        if (explain) *explain << "locked";
+        return 0;
+    }
+
     double marketPrice = GetMarketPrice(proto->ItemId, auctionHouse);
 
     if (!ignoreMarket && marketPrice > 0)
@@ -68,6 +76,7 @@ uint32 PricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionH
             (double)sAhBotConfig.priceMultiplier,
             NULL);
 
+    price *= plan.priceMultiplier;
     return RoundPrice(price);
 }
 
