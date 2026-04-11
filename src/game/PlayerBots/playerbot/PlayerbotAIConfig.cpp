@@ -718,8 +718,9 @@ bool PlayerbotAIConfig::Initialize()
         llmBlockedReplyChannels.insert(sourceName[channelName]);
 
     {
-        std::string promptsFile = config.GetStringDefault("AiPlayerbot.LLMDefaultPromptsFile", "llm_character_card");
-        LoadLLMDefaultPrompts(promptsFile);
+        std::string promptsFile = config.GetStringDefault("AiPlayerbot.LLMDefaultPromptsFile", "");
+        if (!promptsFile.empty())
+            LoadLLMDefaultPrompts(promptsFile);
     }
 
     // Gear progression system
@@ -1211,7 +1212,7 @@ void PlayerbotAIConfig::LoadTalentSpecs()
     }
 
     if (classSpecs[1].talentPath.empty())
-        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "No premade specs found!!");
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "No premade specs found in aiplayerbot.conf. Add AiPlayerbot.PremadeSpecName/AiPlayerbot.PremadeSpecLink entries or use the matching config for this expansion.");
     else
     {
         if (maxSpecLevel < PLAYER_MAX_LEVEL && randomBotMaxLevel < PLAYER_MAX_LEVEL)
