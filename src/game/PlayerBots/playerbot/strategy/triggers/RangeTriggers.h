@@ -408,8 +408,11 @@ namespace ai
 
         bool IsActive() override
         {
-            Unit* master = AI_VALUE(Unit*, "master target");
-            if (!master || !sServerFacade.IsFriendlyTo(bot, master))
+            Player* master = ai->GetGroupMaster();
+            if (!master || !ai->IsSafe(master))
+                return false;
+
+            if (!sServerFacade.IsFriendlyTo(bot, master))
                 return false;
 
             if (master->GetTransport() && master->GetTransport() == bot->GetTransport())
