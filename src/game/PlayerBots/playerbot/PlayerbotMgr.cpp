@@ -378,6 +378,8 @@ Player* PlayerbotHolder::GetPlayerBot(uint32 playerGuid) const
 
 void PlayerbotHolder::JoinChatChannels(Player* bot)
 {
+    return;
+
     // bots join World chat if not solo oriented
     if (bot->GetLevel() >= 10 && sRandomPlayerbotMgr.IsFreeBot(bot) && bot->GetPlayerbotAI() && bot->GetPlayerbotAI()->GetGrouperType() != GrouperType::SOLO)
     {
