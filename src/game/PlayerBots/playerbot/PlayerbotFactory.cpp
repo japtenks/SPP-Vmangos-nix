@@ -2420,7 +2420,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
                     bool hasProperLevel = false;
                     while (!hasProperLevel && currSearchLevel > 0)
                     {
-                        std::vector<uint32> newItems = sRandomItemMgr.Query(currSearchLevel, bot->GetClass(), uint8(specId), slot, q);
+                        RandomItemList const& newItems = sRandomItemMgr.QueryCache(currSearchLevel, bot->GetClass(), uint8(specId), slot, q);
                         if (newItems.size())
                             ids.insert(ids.begin(), newItems.begin(), newItems.end());
 
@@ -2447,7 +2447,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
                     // add one hand weapons for tanks
                     if ((specId == 3 || specId == 5) && slot == EQUIPMENT_SLOT_MAINHAND)
                     {
-                        std::vector<uint32> oneHanded = sRandomItemMgr.Query(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
+                        RandomItemList const& oneHanded = sRandomItemMgr.QueryCache(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
                         if (oneHanded.size())
                             ids.insert(ids.begin(), oneHanded.begin(), oneHanded.end());
                     }
@@ -2455,7 +2455,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
                     // add one hand weapons for casters
                     if ((specId == 4 || (bot->GetClass() == CLASS_DRUID || bot->GetClass() == CLASS_PRIEST || bot->GetClass() == CLASS_MAGE || bot->GetClass() == CLASS_WARLOCK || (specId == 20 || specId == 22))) && slot == EQUIPMENT_SLOT_MAINHAND)
                     {
-                        std::vector<uint32> oneHanded = sRandomItemMgr.Query(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
+                        RandomItemList const& oneHanded = sRandomItemMgr.QueryCache(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
                         if (oneHanded.size())
                             ids.insert(ids.begin(), oneHanded.begin(), oneHanded.end());
                     }
@@ -2467,7 +2467,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
                     if (slot == EQUIPMENT_SLOT_MAINHAND && (bot->GetClass() == CLASS_ROGUE || specId == 2 || specId == 21))
 #endif
                     {
-                        std::vector<uint32> oneHanded = sRandomItemMgr.Query(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
+                        RandomItemList const& oneHanded = sRandomItemMgr.QueryCache(level, bot->GetClass(), uint8(specId), EQUIPMENT_SLOT_OFFHAND, q);
                         if (oneHanded.size())
                             ids.insert(ids.begin(), oneHanded.begin(), oneHanded.end());
                     }

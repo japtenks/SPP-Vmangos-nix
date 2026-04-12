@@ -4455,6 +4455,9 @@ void Spell::EffectScriptEffect(SpellEffectIndex effIdx)
                     break;
                 }
 
+                if (spellId2 <= 1)
+                    return;
+
                 m_caster->CastSpell(unitTarget, spellId2, true);
                 return;
             }

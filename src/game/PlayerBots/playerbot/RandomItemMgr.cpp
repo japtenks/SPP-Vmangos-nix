@@ -3470,6 +3470,11 @@ void RandomItemMgr::BuildEquipCache()
 
 RandomItemList RandomItemMgr::Query(uint32 level, uint8 clazz, uint8 spec, uint8 slot, uint32 quality)
 {
+    return QueryCache(level, clazz, spec, slot, quality);
+}
+
+RandomItemList const& RandomItemMgr::QueryCache(uint32 level, uint8 clazz, uint8 spec, uint8 slot, uint32 quality)
+{
     BotEquipKey key(level, clazz, spec, slot, quality);
     return equipCache[key];
 }
