@@ -54,6 +54,9 @@ bool CastSpellAction::Execute(Event& event)
                 castId = pSpellInfo->Id;
         }
 
+        if (!castId)
+            return false;
+
         executed = ai->CastSpell(castId, bot, nullptr, false, &spellDuration);
     }
     else
