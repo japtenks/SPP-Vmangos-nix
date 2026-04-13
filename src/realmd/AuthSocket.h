@@ -113,11 +113,15 @@ class AuthSocket : public std::enable_shared_from_this<AuthSocket>, MaNGOS::Poli
         uint32 m_gridSeed = 0;
         uint32 m_geoUnlockPIN = 0;
 
-        static constexpr uint32 Win = 'Win';
-        static constexpr uint32 OSX = 'OSX';
+        static constexpr uint32 Win = (static_cast<uint32>('W') << 24) | (static_cast<uint32>('i') << 16) |
+                                      (static_cast<uint32>('n') << 8);
+        static constexpr uint32 OSX = (static_cast<uint32>('O') << 24) | (static_cast<uint32>('S') << 16) |
+                                      (static_cast<uint32>('X') << 8);
 
-        static constexpr uint32 X86 = 'x86';
-        static constexpr uint32 PPC = 'PPC';
+        static constexpr uint32 X86 = (static_cast<uint32>('x') << 24) | (static_cast<uint32>('8') << 16) |
+                                      (static_cast<uint32>('6') << 8);
+        static constexpr uint32 PPC = (static_cast<uint32>('P') << 24) | (static_cast<uint32>('P') << 16) |
+                                      (static_cast<uint32>('C') << 8);
 
         std::string m_os;
         std::string m_platform;
