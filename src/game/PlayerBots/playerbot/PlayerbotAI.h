@@ -687,6 +687,7 @@ public:
 
     std::vector<std::pair<std::string, std::string>> SaveFrameworkState() const;
     void LoadFrameworkState(const std::unordered_map<std::string, std::string>& values);
+    void NormalizeFrameworkState();
 
 #ifdef BUILD_ELUNA
     MaNGOS::unique_weak_ptr<PlayerbotAI> GetWeakPtr() const { return m_weakRef; }

@@ -10,6 +10,8 @@ class PlayerbotAI;
 
 namespace ai
 {
+    class TravelTarget;
+
     enum class BotArchetype : uint8
     {
         CASUAL = 0,
@@ -76,6 +78,8 @@ namespace ai
     {
         TravelDestinationPurpose purpose = TravelDestinationPurpose::None;
         ObjectGuid targetGuid;
+        int32 destinationEntry = 0;
+        uint8 objectiveIndex = 0;
         uint32 questId = 0;
         time_t failCooldownUntil = 0;
         uint8 retryCount = 0;
@@ -84,6 +88,7 @@ namespace ai
 
         InterruptTier GetInterruptTier() const;
         bool CanBePreemptedBy(InterruptTier tier) const;
+        bool MatchesTarget(const TravelTarget* target) const;
         bool ValidateTarget(PlayerbotAI* ai, time_t now = 0, uint32 throttleSeconds = 5);
         void Clear();
     };

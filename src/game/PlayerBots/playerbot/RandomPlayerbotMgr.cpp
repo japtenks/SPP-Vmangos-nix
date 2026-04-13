@@ -731,8 +731,17 @@ void RandomPlayerbotMgr::UpdateCommittedTaskValidity(const std::list<uint32>& av
             if (ai)
             {
                 CommittedTask& committedTask = ai->GetCommittedTask();
-                if (committedTask.purpose != TravelDestinationPurpose::None || committedTask.questId != 0 || committedTask.targetGuid)
-                    committedTask.ValidateTarget(ai);
+                if (committedTask.purpose != TravelDestinationPurpose::None || committedTask.questId != 0 || committedTask.targetGuid || committedTask.destinationEntry != 0)
+                {
+                    if (!committedTask.ValidateTarget(ai))
+                    {
+                        committedTask.Clear();
+
+                        BotSession& session = ai->GetSession();
+                        if (session.state != SessionState::IDLE)
+                            session.Reset(SessionState::IDLE);
+                    }
+                }
             }
 
             ++processed;

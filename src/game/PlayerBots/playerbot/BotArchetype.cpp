@@ -1,5 +1,6 @@
 #include "playerbot/BotArchetype.h"
 #include "playerbot/PlayerbotAI.h"
+#include "playerbot/TravelMgr.h"
 #include "ObjectMgr.h"
 
 using namespace ai;
@@ -10,6 +11,28 @@ namespace
     std::string ToUnderlyingString(T value)
     {
         return std::to_string(static_cast<uint32>(value));
+    }
+
+    uint32 GetTravelTargetQuestId(const TravelTarget* target)
+    {
+        if (!target || !target->GetDestination())
+            return 0;
+
+        if (QuestTravelDestination* questDestination = dynamic_cast<QuestTravelDestination*>(target->GetDestination()))
+            return questDestination->GetQuestId();
+
+        return 0;
+    }
+
+    uint8 GetTravelTargetObjectiveIndex(const TravelTarget* target)
+    {
+        if (!target || !target->GetDestination())
+            return 0;
+
+        if (QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(target->GetDestination()))
+            return objectiveDestination->GetObjective();
+
+        return 0;
     }
 }
 
@@ -61,6 +84,28 @@ bool CommittedTask::CanBePreemptedBy(InterruptTier tier) const
     return static_cast<uint8>(tier) <= static_cast<uint8>(GetInterruptTier());
 }
 
+bool CommittedTask::MatchesTarget(const TravelTarget* target) const
+{
+    if (!target || !target->GetDestination() || purpose == TravelDestinationPurpose::None)
+        return false;
+
+    if (target->GetDestination()->GetPurpose() != purpose)
+        return false;
+
+    const uint32 targetQuestId = GetTravelTargetQuestId(target);
+    if ((questId || targetQuestId) && questId != targetQuestId)
+        return false;
+
+    if (destinationEntry && target->GetEntry() != destinationEntry)
+        return false;
+
+    const uint8 targetObjectiveIndex = GetTravelTargetObjectiveIndex(target);
+    if ((objectiveIndex || targetObjectiveIndex) && objectiveIndex != targetObjectiveIndex)
+        return false;
+
+    return true;
+}
+
 bool CommittedTask::ValidateTarget(PlayerbotAI* ai, time_t now, uint32 throttleSeconds)
 {
     if (!now)
@@ -83,26 +128,42 @@ bool CommittedTask::ValidateTarget(PlayerbotAI* ai, time_t now, uint32 throttleS
         return false;
     }
 
-    if (!targetGuid)
-    {
-        isValid = (purpose != TravelDestinationPurpose::None || questId != 0);
-        return isValid;
-    }
-
     if (targetGuid.IsPlayer())
     {
         isValid = sObjectMgr.GetPlayer(targetGuid) != nullptr;
         return isValid;
     }
 
-    isValid = true;
-    return true;
+    TravelTarget* travelTarget = nullptr;
+    if (ai->GetAiObjectContext())
+        travelTarget = ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+
+    if (!MatchesTarget(travelTarget))
+    {
+        isValid = false;
+        return false;
+    }
+
+    PlayerTravelInfo info(ai->GetBot());
+    TravelDestination* destination = travelTarget->GetDestination();
+    if (!destination)
+    {
+        isValid = false;
+        return false;
+    }
+
+    const bool possible = destination->IsPossible(info);
+    const bool active = destination->IsActive(ai->GetBot(), info) && travelTarget->IsConditionsActive();
+    isValid = possible && active;
+    return isValid;
 }
 
 void CommittedTask::Clear()
 {
     purpose = TravelDestinationPurpose::None;
     targetGuid = ObjectGuid();
+    destinationEntry = 0;
+    objectiveIndex = 0;
     questId = 0;
     failCooldownUntil = 0;
     retryCount = 0;

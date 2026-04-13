@@ -89,6 +89,15 @@ namespace
         return static_cast<uint64>(std::stoull(itr->second));
     }
 
+    int32 ParseInt32OrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, int32 defaultValue = 0)
+    {
+        auto itr = values.find(key);
+        if (itr == values.end() || itr->second.empty())
+            return defaultValue;
+
+        return static_cast<int32>(std::stol(itr->second));
+    }
+
     bool ParseBoolOrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, bool defaultValue = false)
     {
         auto itr = values.find(key);
@@ -294,6 +303,8 @@ std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState
         {"framework.session_is_paused", botSession.isPaused ? "1" : "0"},
         {"framework.committed_purpose", std::to_string(static_cast<uint32>(committedTask.purpose))},
         {"framework.committed_target", std::to_string(committedTask.targetGuid.GetRawValue())},
+        {"framework.committed_entry", std::to_string(committedTask.destinationEntry)},
+        {"framework.committed_objective", std::to_string(static_cast<uint32>(committedTask.objectiveIndex))},
         {"framework.committed_quest", std::to_string(committedTask.questId)},
         {"framework.committed_fail_cooldown", std::to_string(static_cast<uint32>(committedTask.failCooldownUntil))},
         {"framework.committed_retry", std::to_string(committedTask.retryCount)},
@@ -322,11 +333,23 @@ void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::
 
     committedTask.purpose = static_cast<TravelDestinationPurpose>(ParseUint32OrDefault(values, "framework.committed_purpose", static_cast<uint32>(committedTask.purpose)));
     committedTask.targetGuid = ObjectGuid(ParseUint64OrDefault(values, "framework.committed_target", committedTask.targetGuid.GetRawValue()));
+    committedTask.destinationEntry = ParseInt32OrDefault(values, "framework.committed_entry", committedTask.destinationEntry);
+    committedTask.objectiveIndex = static_cast<uint8>(ParseUint32OrDefault(values, "framework.committed_objective", committedTask.objectiveIndex));
     committedTask.questId = ParseUint32OrDefault(values, "framework.committed_quest", committedTask.questId);
     committedTask.failCooldownUntil = static_cast<time_t>(ParseUint32OrDefault(values, "framework.committed_fail_cooldown", static_cast<uint32>(committedTask.failCooldownUntil)));
     committedTask.retryCount = static_cast<uint8>(ParseUint32OrDefault(values, "framework.committed_retry", committedTask.retryCount));
     committedTask.lastValidityCheck = static_cast<time_t>(ParseUint32OrDefault(values, "framework.committed_validity_check", static_cast<uint32>(committedTask.lastValidityCheck)));
     committedTask.isValid = ParseBoolOrDefault(values, "framework.committed_valid", committedTask.isValid);
+    NormalizeFrameworkState();
+}
+
+void PlayerbotAI::NormalizeFrameworkState()
+{
+    if (!committedTask.ValidateTarget(this, time(nullptr), 0))
+        committedTask.Clear();
+
+    if (botSession.state != SessionState::IDLE && committedTask.purpose == TravelDestinationPurpose::None)
+        botSession.Reset(SessionState::IDLE);
 }
 
 PlayerbotAI::~PlayerbotAI()

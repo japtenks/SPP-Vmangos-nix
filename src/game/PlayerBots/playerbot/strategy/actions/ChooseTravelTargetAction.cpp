@@ -50,19 +50,15 @@ namespace
         return 0;
     }
 
-    bool TravelTargetMatchesCommittedTask(const TravelTarget* target, const CommittedTask& task)
+    uint8 GetTravelTargetObjectiveIndex(const TravelTarget* target)
     {
-        if (!target || !target->GetDestination() || task.purpose == TravelDestinationPurpose::None)
-            return false;
+        if (!target || !target->GetDestination())
+            return 0;
 
-        if (target->GetDestination()->GetPurpose() != task.purpose)
-            return false;
+        if (QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(target->GetDestination()))
+            return objectiveDestination->GetObjective();
 
-        uint32 questId = GetTravelTargetQuestId(target);
-        if (task.questId || questId)
-            return task.questId == questId;
-
-        return true;
+        return 0;
     }
 
     InterruptTier GetTravelTargetInterruptTier(const TravelTarget* target)
@@ -86,6 +82,8 @@ namespace
             return;
 
         committedTask.purpose = target->GetDestination()->GetPurpose();
+        committedTask.destinationEntry = target->GetEntry();
+        committedTask.objectiveIndex = GetTravelTargetObjectiveIndex(target);
         committedTask.questId = GetTravelTargetQuestId(target);
         committedTask.retryCount = static_cast<uint8>(std::min<uint32>(target->GetRetryCount(false), std::numeric_limits<uint8>::max()));
         committedTask.lastValidityCheck = time(nullptr);
@@ -202,14 +200,14 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     }
 
     CommittedTask& committedTask = ai->GetCommittedTask();
-    if (committedTask.ValidateTarget(ai) && !TravelTargetMatchesCommittedTask(&newTarget, committedTask))
+    if (committedTask.ValidateTarget(ai) && !committedTask.MatchesTarget(&newTarget))
     {
         InterruptTier newTier = GetTravelTargetInterruptTier(&newTarget);
         if (!committedTask.CanBePreemptedBy(newTier))
         {
             ai->TellDebug(requester, "Keeping committed " + InterruptTierToString(committedTask.GetInterruptTier()) + " task over new " + InterruptTierToString(newTier) + " target.", "debug travel");
 
-            if (TravelTargetMatchesCommittedTask(travelTarget, committedTask) && travelTarget->GetDestination() && travelTarget->IsDestinationActive() && travelTarget->IsConditionsActive())
+            if (committedTask.MatchesTarget(travelTarget) && travelTarget->GetDestination() && travelTarget->IsDestinationActive() && travelTarget->IsConditionsActive())
             {
                 travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
                 return false;

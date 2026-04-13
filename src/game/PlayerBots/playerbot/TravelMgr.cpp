@@ -54,20 +54,15 @@ namespace
         return 0;
     }
 
-    void ReleaseFrameworkTravelState(TravelTarget* target)
+    void ReleaseFrameworkTravelState(PlayerbotAI* ai, TravelTarget* target)
     {
-        if (!target || !target->GetDestination())
-            return;
-
-        PlayerbotAI* ai = target->GetAiObjectContext() ? target->GetAiObjectContext()->GetAi() : nullptr;
-        if (!ai)
+        if (!ai || !target || !target->GetDestination())
             return;
 
         const TravelDestinationPurpose purpose = target->GetDestination()->GetPurpose();
-        const uint32 questId = GetTravelTargetQuestId(target);
 
         CommittedTask& committedTask = ai->GetCommittedTask();
-        if (committedTask.purpose == purpose && committedTask.questId == questId)
+        if (committedTask.MatchesTarget(target))
             committedTask.Clear();
 
         BotSession& session = ai->GetSession();
@@ -1027,7 +1022,7 @@ void TravelTarget::CheckStatus()
     if (!ai->HasStrategy("travel", BotState::BOT_STATE_NON_COMBAT) && !ai->HasStrategy("travel once", BotState::BOT_STATE_NON_COMBAT))
     {
         ai->TellDebug(ai->GetMaster(), "The target is clearing because it was a travel once destination.", "debug travel");
-        ReleaseFrameworkTravelState(this);
+        ReleaseFrameworkTravelState(ai, this);
         sTravelMgr.SetNullTravelTarget(this);
         return;
     }
@@ -1035,7 +1030,7 @@ void TravelTarget::CheckStatus()
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
     {
         ai->TellDebug(ai->GetMaster(), "Travel target expired because the status time was exceeded.", "debug travel");
-        ReleaseFrameworkTravelState(this);
+        ReleaseFrameworkTravelState(ai, this);
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -1051,7 +1046,7 @@ void TravelTarget::CheckStatus()
             {
                 ai->TellDebug(ai->GetMaster(), "The target is clearing because it was a travel once destination.", "debug travel");
                 ai->ChangeStrategy("nc -travel once", BotState::BOT_STATE_NON_COMBAT);
-                ReleaseFrameworkTravelState(this);
+                ReleaseFrameworkTravelState(ai, this);
                 sTravelMgr.SetNullTravelTarget(this);
                 return;
             }
@@ -1072,7 +1067,7 @@ void TravelTarget::CheckStatus()
         {
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
             forced = false;
-            ReleaseFrameworkTravelState(this);
+            ReleaseFrameworkTravelState(ai, this);
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
             return;
         }
@@ -2754,7 +2749,6 @@ void TravelMgr::SetNullTravelTarget(TravelTarget* target) const
 {
     if (target)
     {
-        ReleaseFrameworkTravelState(target);
         target->SetTarget(nullTravelDestination, nullWorldPosition);
         target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
     }
@@ -2770,6 +2764,7 @@ void TravelMgr::SetNullTravelTarget(Player* player) const
 
     TravelTarget* target = player->GetPlayerbotAI()->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
 
+    ReleaseFrameworkTravelState(player->GetPlayerbotAI(), target);
     SetNullTravelTarget(target);
 }
 
