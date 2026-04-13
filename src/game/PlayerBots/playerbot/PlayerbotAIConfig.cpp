@@ -1104,120 +1104,245 @@ void PlayerbotAIConfig::LoadTalentSpecs()
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Loading TalentSpecs");
 
     uint32 maxSpecLevel = 0;
+    bool sqlTablePresent = false;
+    bool sqlBuildLoaded = false;
+    uint32 sqlRowCount = 0;
+    uint32 sqlMinBuild = 0;
+    uint32 sqlMaxBuild = 0;
+
+    for (uint32 cls = 0; cls < MAX_CLASSES; ++cls)
+    {
+        classSpecs[cls] = ClassSpecs();
+        glyphPriorityMap[cls].clear();
+
+        for (uint32 spec = 0; spec < 10; ++spec)
+        {
+            specProbability[cls][spec] = 100;
+            for (uint32 levelIndex = 0; levelIndex < 91; ++levelIndex)
+                premadeLevelSpec[cls][spec][levelIndex].clear();
+        }
+    }
 
     for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
-    {
         classSpecs[cls] = ClassSpecs(1 << (cls - 1));
+
+    // Keep the legacy arrays in sync so older bot-init code can keep using the
+    // same cached view while we move the source of truth to structured data.
+    auto recordPremadeSpec = [&](uint32 cls, uint32 spec, uint32 level, uint32 probability, std::string const& specLink)
+    {
+        if (spec < 10)
+            specProbability[cls][spec] = probability;
+
+        if (spec < 10 && level >= 10 && level <= 100)
+            premadeLevelSpec[cls][spec][level - 10] = specLink;
+    };
+
+    auto addTalentLink = [&](uint32 cls, uint32 spec, uint32 level, std::string const& specLink, TalentPath& talentPath)
+    {
+        if (specLink.empty())
+            return;
+
+        if (maxSpecLevel < level)
+            maxSpecLevel = level;
+
+        std::ostringstream out;
+
+        if (!classSpecs[cls].baseSpec.CheckTalentLink(specLink, &out))
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Error with premade spec link: %s", specLink.c_str());
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s", out.str().c_str());
+            return;
+        }
+
+        TalentSpec linkSpec(&classSpecs[cls].baseSpec, specLink);
+
+        if (!linkSpec.CheckTalents(TalentSpec::LeveltoPoints(level), &out))
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Error with premade spec: %s", specLink.c_str());
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s", out.str().c_str());
+            return;
+        }
+
+        talentPath.talentSpec.push_back(linkSpec);
+        recordPremadeSpec(cls, spec, level, talentPath.probability, specLink);
+    };
+
+    auto replaceTalentPath = [&](uint32 cls, TalentPath const& talentPath)
+    {
+        if (talentPath.talentSpec.empty())
+            return;
+
+        auto& paths = classSpecs[cls].talentPath;
+        for (auto itr = paths.begin(); itr != paths.end(); ++itr)
+        {
+            if (itr->id == talentPath.id)
+            {
+                *itr = talentPath;
+                return;
+            }
+        }
+
+        paths.push_back(talentPath);
+    };
+
+    // Legacy config still loads first so existing installs keep working, but
+    // SQL is allowed to replace matching specs later with realm-owned data.
+    for (uint32 cls = 1; cls < MAX_CLASSES; ++cls)
+    {
         for (uint32 spec = 0; spec < MAX_LEVEL; ++spec)
         {
-            std::ostringstream os; os << "AiPlayerbot.PremadeSpecName." << cls << "." << spec;
+            std::ostringstream os;
+            os << "AiPlayerbot.PremadeSpecName." << cls << "." << spec;
             std::string specName = config.GetStringDefault(os.str().c_str(), "");
-            if (!specName.empty())
+            if (specName.empty())
+                continue;
+
+            std::ostringstream probKey;
+            probKey << "AiPlayerbot.PremadeSpecProb." << cls << "." << spec;
+            uint32 probability = config.GetIntDefault(probKey.str().c_str(), 100);
+
+            TalentPath talentPath(spec, specName, probability);
+
+            for (uint32 level = 10; level <= 100; ++level)
             {
-                std::ostringstream os; os << "AiPlayerbot.PremadeSpecProb." << cls << "." << spec;
-                int probability = config.GetIntDefault(os.str().c_str(), 100);
+                std::ostringstream linkKey;
+                linkKey << "AiPlayerbot.PremadeSpecLink." << cls << "." << spec << "." << level;
 
-                TalentPath talentPath(spec, specName, probability);
+                std::string specLink = config.GetStringDefault(linkKey.str().c_str(), "");
+                specLink = specLink.substr(0, specLink.find("#", 0));
+                specLink = specLink.substr(0, specLink.find(" ", 0));
 
-                for (uint32 level = 10; level <= 100; level++)
+                addTalentLink(cls, spec, level, specLink, talentPath);
+
+                using GlyphPriority = std::pair<std::string, uint32>;
+                using GlyphPriorityList = std::vector<GlyphPriority>;
+                using GlyphPriorityLevelMap = std::unordered_map<uint32, GlyphPriorityList>;
+                using GlyphPrioritySpecMap = std::unordered_map<uint32, GlyphPriorityLevelMap>;
+
+                std::ostringstream glyphKey;
+                glyphKey << "AiPlayerbot.PremadeSpecGlyp." << cls << "." << spec << "." << level;
+
+                std::string glyphList = config.GetStringDefault(glyphKey.str().c_str(), "");
+                glyphList = glyphList.substr(0, glyphList.find("#", 0));
+                glyphList.erase(glyphList.find_last_not_of(" \t\n\r") + 1);
+
+                if (!glyphList.empty())
                 {
-                    std::ostringstream os; os << "AiPlayerbot.PremadeSpecLink." << cls << "." << spec << "." << level;
-                    std::string specLink = config.GetStringDefault(os.str().c_str(), "");
-                    specLink = specLink.substr(0, specLink.find("#", 0));
-                    specLink = specLink.substr(0, specLink.find(" ", 0));
+                    Tokens premadeSpecGlyphs = Qualified::getMultiQualifiers(glyphList, ",");
 
-                    if (!specLink.empty())
+                    for (auto& glyph : premadeSpecGlyphs)
                     {
-                        if (maxSpecLevel < level)
-                            maxSpecLevel = level;
+                        Tokens tokens = Qualified::getMultiQualifiers(glyph, "|");
+                        std::string glyphName = "Glyph of " + tokens[0];
+                        uint32 talentId = tokens.size() > 1 ? stoi(tokens[1]) : 0;
 
-                        std::ostringstream out;
-
-                        //Ignore bad specs.
-                        if (!classSpecs[cls].baseSpec.CheckTalentLink(specLink, &out))
+                        bool glyphFound = false;
+                        for (auto& itemId : sRandomItemMgr.GetGlyphs(1 << (cls - 1)))
                         {
-                            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Error with premade spec link: %s", specLink.c_str());
-                            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s", out.str().c_str());
-                            continue;
-                        }
+                            ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
 
-                        TalentSpec linkSpec(&classSpecs[cls].baseSpec, specLink);
+                            if (!proto)
+                                continue;
 
-                        if (!linkSpec.CheckTalents(TalentSpec::LeveltoPoints(level), &out))
-                        {
-                            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Error with premade spec: %s", specLink.c_str());
-                            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s", out.str().c_str());
-                            continue;
-                        }
-
-
-                        talentPath.talentSpec.push_back(linkSpec);
-                    }
-
-                    {
-                        //Glyphs
-
-                        using GlyphPriority = std::pair<std::string, uint32>;
-                        using GlyphPriorityList = std::vector<GlyphPriority>;
-                        using GlyphPriorityLevelMap = std::unordered_map<uint32, GlyphPriorityList>;
-                        using GlyphPrioritySpecMap = std::unordered_map<uint32, GlyphPriorityLevelMap>;
-
-                        std::ostringstream os; os << "AiPlayerbot.PremadeSpecGlyp." << cls << "." << spec << "." << level;
-
-                        std::string glyphList = config.GetStringDefault(os.str().c_str(), "");
-                        glyphList = glyphList.substr(0, glyphList.find("#", 0));
-                        glyphList.erase(glyphList.find_last_not_of(" \t\n\r") + 1);
-
-                        if (!glyphList.empty())
-                        {
-                            Tokens premadeSpecGlyphs = Qualified::getMultiQualifiers(glyphList, ",");
-
-                            for (auto& glyph : premadeSpecGlyphs)
+                            if (proto->Name1 == glyphName)
                             {
-                                Tokens tokens = Qualified::getMultiQualifiers(glyph, "|");
-                                std::string glyphName = "Glyph of " + tokens[0];
-                                uint32 talentId = tokens.size() > 1 ? stoi(tokens[1]) : 0;
-
-                                bool glyphFound = false;
-                                for (auto& itemId : sRandomItemMgr.GetGlyphs(1 << (cls - 1)))
-                                {
-                                    ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
-
-                                    if (!proto)
-                                        continue;
-
-                                    if (proto->Name1 == glyphName)
-                                    {
-                                        glyphPriorityMap[cls][spec][level].push_back(std::make_pair(itemId, talentId));
-                                        glyphFound = true;
-                                        break;
-                                    }
-                                }
-
-                                if (!glyphFound)
-                                {
-                                    sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s is not found for class %d (spec %d level %d)", glyphName.c_str(), cls, spec, level);
-                                }
-
+                                glyphPriorityMap[cls][spec][level].push_back(std::make_pair(itemId, talentId));
+                                glyphFound = true;
+                                break;
                             }
+                        }
+
+                        if (!glyphFound)
+                        {
+                            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "%s is not found for class %d (spec %d level %d)", glyphName.c_str(), cls, spec, level);
                         }
                     }
                 }
-
-                //Only add paths that have atleast 1 spec.
-                if (talentPath.talentSpec.size() > 0)
-                    classSpecs[cls].talentPath.push_back(talentPath);
             }
+
+            replaceTalentPath(cls, talentPath);
+        }
+    }
+
+    // Premade specs are structured gameplay data rather than operator settings,
+    // so prefer a world table when it is available. This keeps the shipped
+    // config focused on behavior toggles and lets realms verify build matches.
+    if (WorldDatabase.Query("SHOW TABLES LIKE 'ai_playerbot_premade_spec'"))
+    {
+        sqlTablePresent = true;
+
+        if (auto summary = WorldDatabase.Query("SELECT COUNT(*), COALESCE(MIN(core_build), 0), COALESCE(MAX(core_build), 0) FROM ai_playerbot_premade_spec"))
+        {
+            Field* fields = summary->Fetch();
+            sqlRowCount = fields[0].GetUInt32();
+            sqlMinBuild = fields[1].GetUInt32();
+            sqlMaxBuild = fields[2].GetUInt32();
+        }
+
+        if (auto results = WorldDatabase.PQuery("SELECT class_id, spec_id, level, name, probability, talent_link FROM ai_playerbot_premade_spec WHERE core_build = %u ORDER BY class_id, spec_id, level", SUPPORTED_CLIENT_BUILD))
+        {
+            sqlBuildLoaded = true;
+
+            uint32 currentClass = 0;
+            uint32 currentSpec = 0;
+            TalentPath currentPath(0, "", 100);
+            bool hasCurrentPath = false;
+
+            do
+            {
+                Field* fields = results->Fetch();
+                uint32 cls = fields[0].GetUInt32();
+                uint32 spec = fields[1].GetUInt32();
+                uint32 level = fields[2].GetUInt32();
+                std::string name = fields[3].GetCppString();
+                uint32 probability = fields[4].GetUInt32();
+                std::string specLink = fields[5].GetCppString();
+
+                if (cls == 0 || cls >= MAX_CLASSES)
+                {
+                    sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Skipping ai_playerbot_premade_spec row with invalid class_id %u", cls);
+                    continue;
+                }
+
+                if (name.empty())
+                {
+                    sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Skipping ai_playerbot_premade_spec row with empty name for class %u spec %u level %u", cls, spec, level);
+                    continue;
+                }
+
+                if (!hasCurrentPath || cls != currentClass || spec != currentSpec)
+                {
+                    if (hasCurrentPath)
+                        replaceTalentPath(currentClass, currentPath);
+
+                    currentClass = cls;
+                    currentSpec = spec;
+                    currentPath = TalentPath(spec, name, probability);
+                    hasCurrentPath = true;
+                }
+
+                addTalentLink(cls, spec, level, specLink, currentPath);
+            }
+            while (results->NextRow());
+
+            if (hasCurrentPath)
+                replaceTalentPath(currentClass, currentPath);
         }
     }
 
     if (classSpecs[1].talentPath.empty())
-        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "No premade specs found in aiplayerbot.conf. Add AiPlayerbot.PremadeSpecName/AiPlayerbot.PremadeSpecLink entries or use the matching config for this expansion.");
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "No premade specs found in ai_playerbot_premade_spec or aiplayerbot.conf. Seed ai_playerbot_premade_spec for build %u or provide legacy AiPlayerbot.PremadeSpec entries.", SUPPORTED_CLIENT_BUILD);
+    }
     else
     {
+        if (sqlTablePresent && sqlRowCount > 0 && !sqlBuildLoaded)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "ai_playerbot_premade_spec has %u rows for core_build range %u-%u, but none matched build %u. Falling back to aiplayerbot.conf values.", sqlRowCount, sqlMinBuild, sqlMaxBuild, SUPPORTED_CLIENT_BUILD);
+        }
+
         if (maxSpecLevel < PLAYER_MAX_LEVEL && randomBotMaxLevel < PLAYER_MAX_LEVEL)
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "!!!!!!!!!!! randomBotMaxLevel and the talentspec levels are below this expansions max level. Please check if you have the correct config file!!!!!!");
-
     }
 }
 
