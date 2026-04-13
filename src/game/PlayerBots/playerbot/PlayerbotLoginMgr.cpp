@@ -4,9 +4,16 @@
 #include "PlayerbotAIConfig.h"
 #include "RandomPlayerbotMgr.h"
 #include "Group/Group.h"
+#include "Timer.h"
 
 
 using namespace ai;
+
+namespace
+{
+    constexpr uint32 PLAYERBOT_STARTUP_RAMP_DURATION_MS = 15 * 60 * 1000;
+    constexpr uint32 PLAYERBOT_STARTUP_RAMP_MIN_LOGINS = 5;
+}
 
 PlayerLoginInfo::PlayerLoginInfo(const uint32 account, const uint32 guid, const uint8 race, const uint8 cls, const uint32 level, const bool isNew, const WorldPosition& position, const uint32 guildId) : account(account), guid(guid), race(race), cls(cls), level(level), isNew(isNew), position(position), guildId(guildId) {}
 
@@ -113,10 +120,15 @@ bool PlayerLoginInfo::IsInInstance() const
     return !position.isOverworld() && !position.isBg() && !position.isArena();
 }
 
+bool PlayerLoginInfo::CanSendHolder() const
+{
+    return loginState == LoginState::BOT_ON_LOGINQUEUE && holderState == HolderState::HOLDER_EMPTY;
+}
+
 bool PlayerLoginInfo::SendHolder()
 {
     if (holderState == HolderState::HOLDER_SENT)
-        return true;
+        return false;
 
     if (holderState == HolderState::HOLDER_RECEIVED)
         return false;
@@ -262,6 +274,11 @@ void PlayerLoginInfo::Update(Player* player)
     guildId = player->GetGuildId();
 }
 
+void PlayerLoginInfo::MarkOffline()
+{
+    loginState = LoginState::BOT_OFFLINE;
+}
+
 bool PlayerLoginInfo::LoginBot()
 {
     if (loginState != LoginState::BOT_ON_LOGINQUEUE)
@@ -341,10 +358,15 @@ void PlayerBotLoginMgr::Update(RealPlayers& realPlayers)
         return;
     }
 
+    if (!startupRampStartMs)
+        startupRampStartMs = WorldTimer::getMSTime();
+
+    uint32 maxLoginsPerInterval = GetMaxLoginsPerInterval();
+
     if (!futureQueue.valid())
     {
         CollectReadyHolders();
-        futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers);
+        futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers, maxLoginsPerInterval, debug);
         return;
     }
 
@@ -357,7 +379,45 @@ void PlayerBotLoginMgr::Update(RealPlayers& realPlayers)
     if (!queue.empty())
         LoginLogoutBots(queue);
 
-    futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers);
+    futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers, maxLoginsPerInterval, debug);
+}
+
+std::list<uint32> PlayerBotLoginMgr::GetTrackedBotIds() const
+{
+    std::list<uint32> trackedBots;
+
+    for (const auto& [guid, info] : botPool)
+    {
+        if (info.GetLoginState() == LoginState::BOT_OFFLINE)
+            continue;
+
+        trackedBots.push_back(guid);
+    }
+
+    return trackedBots;
+}
+
+uint32 PlayerBotLoginMgr::GetMaxLoginsPerInterval() const
+{
+    uint32 configuredMax = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
+
+    if (!configuredMax)
+        return 0;
+
+    if (!startupRampStartMs)
+        return std::min(configuredMax, PLAYERBOT_STARTUP_RAMP_MIN_LOGINS);
+
+    uint32 elapsed = WorldTimer::getMSTimeDiff(startupRampStartMs, WorldTimer::getMSTime());
+    if (elapsed >= PLAYERBOT_STARTUP_RAMP_DURATION_MS)
+        return configuredMax;
+
+    uint32 rampFloor = std::min(configuredMax, PLAYERBOT_STARTUP_RAMP_MIN_LOGINS);
+    if (configuredMax <= rampFloor)
+        return configuredMax;
+
+    float progress = std::min(1.0f, float(elapsed) / float(PLAYERBOT_STARTUP_RAMP_DURATION_MS));
+    uint32 ramped = rampFloor + uint32(progress * float(configuredMax - rampFloor));
+    return std::min(configuredMax, std::max(rampFloor, ramped));
 }
 
 BotPool PlayerBotLoginMgr::LoadBotsFromDb()
@@ -424,45 +484,72 @@ BotPool PlayerBotLoginMgr::LoadBotsFromDb()
     return botPool;
 }
 
-void PlayerBotLoginMgr::SendHolders(const BotInfos& queue)
+void PlayerBotLoginMgr::SendHolders(const BotInfos& queue, uint32 maxHoldersPerInterval)
 {  
     // AsyncPQuery ping not compatible with vmangos
+    if (!maxHoldersPerInterval)
+        return;
+
+    uint32 sent = 0;
 
     for (auto& info : queue)
     {
         if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
             break;
-        info->SendHolder();
+        if (!info->CanSendHolder())
+            continue;
+
+        if (info->SendHolder() && ++sent >= maxHoldersPerInterval)
+            break;
     }
 }
 
-void PlayerBotLoginMgr::SendHolders(BotPool* pool)
+void PlayerBotLoginMgr::SendHolders(BotPool* pool, uint32 maxHoldersPerInterval)
 {
     // AsyncPQuery ping not compatible with vmangos
-    uint32 holdersSent = 0;
-    uint32 holderLimit = std::max<uint32>(1, sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval);
+    if (!maxHoldersPerInterval)
+        return;
+
+    uint32 sent = 0;
 
     for (auto& [guid, info] : *pool)
     {
-        if (holdersSent >= holderLimit)
-            break;
-
         if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
             break;
+        if (!info.CanSendHolder())
+            continue;
 
-        if (info.SendHolder())
-            ++holdersSent;
+        if (info.SendHolder() && ++sent >= maxHoldersPerInterval)
+            break;
     }
 }
 
 void PlayerBotLoginMgr::UpdateOnlineBots()
 {
-    for (auto& info : onlineBots)
+    auto it = onlineBots.begin();
+    while (it != onlineBots.end())
     {
+        PlayerLoginInfo* info = *it;
         Player* player = info->GetPlayer();
-        if(player)
+        if (player)
+        {
             info->Update(player);
+            ++it;
+            continue;
+        }
+
+        info->MarkOffline();
+        it = onlineBots.erase(it);
     }
+}
+
+bool PlayerBotLoginMgr::HasTrackedBot(uint32 guid) const
+{
+    auto itr = botPool.find(guid);
+    if (itr == botPool.end())
+        return false;
+
+    return itr->second.GetLoginState() != LoginState::BOT_OFFLINE;
 }
 
 #define ADD_CRITERIA(type, condition) criteria.push_back(std::make_pair(LoginCriterionFailType::type, []( const PlayerLoginInfo& info, const LoginSpace& space) {return condition;}))
@@ -580,7 +667,7 @@ bool PlayerBotLoginMgr::CriteriaStillValid(const LoginCriterionFailType oldFailT
     return false;
 }
 
-BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayers& realPlayers)
+BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayers& realPlayers, uint32 maxLoginsPerInterval, bool debug)
 {
     LoginSpace loginSpace;
     loginSpace.realPlayerInfos = GetPlayerInfos(realPlayers);
@@ -589,7 +676,7 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
     std::unordered_map<uint32, LoginCriterionFailType> loginFails;
     std::set<PlayerLoginInfo*> potentialQueue;
 
-    if(sPlayerBotLoginMgr.debug)
+    if(debug)
         sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "PlayerbotLoginMgr: Initial space %d", loginSpace.totalSpace);
 
     for (uint8 attempt = 0; attempt <= GetLoginCriteriaSize(); attempt++)
@@ -621,7 +708,7 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
             }
         }
 
-        if (sPlayerBotLoginMgr.debug)
+        if (debug)
         {
             std::string variableCriteria;
             for (auto& crit : GetVariableLoginCriteria(attempt))
@@ -636,16 +723,19 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
     }
 
     BotInfos queue;
+    uint32 pendingLogins = 0;
     uint32 logins = 0;
 
     for (auto& info : potentialQueue)
         if (info->GetLoginState() == LoginState::BOT_ON_LOGINQUEUE)
         {
+            pendingLogins++;
+
+            if (logins >= maxLoginsPerInterval)
+                continue;
+
             queue.push_back(info);
             logins++;
-
-            if (logins >= sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval)
-                break;
         }
 
     loginSpace.currentSpace -= logins;
@@ -667,13 +757,18 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
             logouts++;
         }
 
-    if (sPlayerBotLoginMgr.debug)
-        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "PlayerbotLoginMgr: Queued to log in: %d, out: %d", logins, logouts);
+    if (debug)
+    {
+        if (maxLoginsPerInterval < sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval)
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "PlayerbotLoginMgr: Startup ramp active, login budget %u/%u", maxLoginsPerInterval, sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval);
+
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "PlayerbotLoginMgr: Pending logins %u, queued to log in %u, out %u", pendingLogins, logins, logouts);
+    }
 
     if(!sPlayerbotAIConfig.preloadHolders)
-        SendHolders(queue);
+        SendHolders(queue, maxLoginsPerInterval);
     else
-        SendHolders(pool);
+        SendHolders(pool, maxLoginsPerInterval);
 
     return queue;
 }

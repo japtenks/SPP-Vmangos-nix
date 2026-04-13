@@ -69,6 +69,36 @@ std::string &trim(std::string &s);
 
 std::set<std::string> PlayerbotAI::unsecuredCommands;
 
+namespace
+{
+    uint32 ParseUint32OrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, uint32 defaultValue = 0)
+    {
+        auto itr = values.find(key);
+        if (itr == values.end() || itr->second.empty())
+            return defaultValue;
+
+        return static_cast<uint32>(std::stoul(itr->second));
+    }
+
+    uint64 ParseUint64OrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, uint64 defaultValue = 0)
+    {
+        auto itr = values.find(key);
+        if (itr == values.end() || itr->second.empty())
+            return defaultValue;
+
+        return static_cast<uint64>(std::stoull(itr->second));
+    }
+
+    bool ParseBoolOrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, bool defaultValue = false)
+    {
+        auto itr = values.find(key);
+        if (itr == values.end())
+            return defaultValue;
+
+        return itr->second == "1" || itr->second == "true";
+    }
+}
+
 uint32 PlayerbotChatHandler::extractQuestId(std::string str)
 {
     char* source = (char*)str.c_str();
@@ -146,6 +176,10 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
 	accountId = sObjectMgr.GetPlayerAccountIdByGUID(bot->GetObjectGuid());
 
     aiObjectContext = AiFactory::createAiObjectContext(bot, this);
+    const BotArchetype assignedArchetype = AiFactory::AssignArchetype(bot);
+    ApplyArchetype(assignedArchetype, AiFactory::GetArchetypeWeights(assignedArchetype));
+    botSession.Reset(SessionState::IDLE);
+    committedTask.Clear();
 
     UpdateTalentSpec();
 
@@ -241,6 +275,58 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     {
         DoSpecificAction("auto talents");
     }
+}
+
+void PlayerbotAI::ApplyArchetype(BotArchetype newArchetype, const ArchetypeWeights& weights)
+{
+    archetype = newArchetype;
+    archetypeWeights = weights;
+}
+
+std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState() const
+{
+    return {
+        {"framework.archetype", BotArchetypeToString(archetype)},
+        {"framework.session_state", SessionStateToString(botSession.state)},
+        {"framework.session_duration", std::to_string(botSession.plannedDuration)},
+        {"framework.session_started", std::to_string(static_cast<uint32>(botSession.startedAt))},
+        {"framework.session_paused", std::to_string(static_cast<uint32>(botSession.pausedAt))},
+        {"framework.session_is_paused", botSession.isPaused ? "1" : "0"},
+        {"framework.committed_purpose", std::to_string(static_cast<uint32>(committedTask.purpose))},
+        {"framework.committed_target", std::to_string(committedTask.targetGuid.GetRawValue())},
+        {"framework.committed_quest", std::to_string(committedTask.questId)},
+        {"framework.committed_fail_cooldown", std::to_string(static_cast<uint32>(committedTask.failCooldownUntil))},
+        {"framework.committed_retry", std::to_string(committedTask.retryCount)},
+        {"framework.committed_validity_check", std::to_string(static_cast<uint32>(committedTask.lastValidityCheck))},
+        {"framework.committed_valid", committedTask.isValid ? "1" : "0"}
+    };
+}
+
+void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::string>& values)
+{
+    auto archetypeItr = values.find("framework.archetype");
+    if (archetypeItr != values.end())
+    {
+        const BotArchetype loadedArchetype = BotArchetypeFromString(archetypeItr->second);
+        ApplyArchetype(loadedArchetype, AiFactory::GetArchetypeWeights(loadedArchetype));
+    }
+
+    auto sessionItr = values.find("framework.session_state");
+    if (sessionItr != values.end())
+        botSession.state = SessionStateFromString(sessionItr->second);
+
+    botSession.plannedDuration = ParseUint32OrDefault(values, "framework.session_duration", botSession.plannedDuration);
+    botSession.startedAt = static_cast<time_t>(ParseUint32OrDefault(values, "framework.session_started", static_cast<uint32>(botSession.startedAt)));
+    botSession.pausedAt = static_cast<time_t>(ParseUint32OrDefault(values, "framework.session_paused", static_cast<uint32>(botSession.pausedAt)));
+    botSession.isPaused = ParseBoolOrDefault(values, "framework.session_is_paused", botSession.isPaused);
+
+    committedTask.purpose = static_cast<TravelDestinationPurpose>(ParseUint32OrDefault(values, "framework.committed_purpose", static_cast<uint32>(committedTask.purpose)));
+    committedTask.targetGuid = ObjectGuid(ParseUint64OrDefault(values, "framework.committed_target", committedTask.targetGuid.GetRawValue()));
+    committedTask.questId = ParseUint32OrDefault(values, "framework.committed_quest", committedTask.questId);
+    committedTask.failCooldownUntil = static_cast<time_t>(ParseUint32OrDefault(values, "framework.committed_fail_cooldown", static_cast<uint32>(committedTask.failCooldownUntil)));
+    committedTask.retryCount = static_cast<uint8>(ParseUint32OrDefault(values, "framework.committed_retry", committedTask.retryCount));
+    committedTask.lastValidityCheck = static_cast<time_t>(ParseUint32OrDefault(values, "framework.committed_validity_check", static_cast<uint32>(committedTask.lastValidityCheck)));
+    committedTask.isValid = ParseBoolOrDefault(values, "framework.committed_valid", committedTask.isValid);
 }
 
 PlayerbotAI::~PlayerbotAI()
@@ -523,6 +609,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
         }
+    }
+    else if (isMovingToTransport && (!bot->GetTransport() || bot->IsBeingTeleported()))
+    {
+        isMovingToTransport = false;
     }
     else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport)
     {

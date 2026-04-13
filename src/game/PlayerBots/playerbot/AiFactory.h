@@ -30,4 +30,6 @@ public:
     static int GetPlayerSpecTab(const Player* player);
     static std::map<uint32, int32> GetPlayerSpecTabs(const Player* player);
     static BotRoles GetPlayerRoles(const Player* player);
+    static BotArchetype AssignArchetype(Player* player);
+    static ArchetypeWeights GetArchetypeWeights(BotArchetype archetype);
 };

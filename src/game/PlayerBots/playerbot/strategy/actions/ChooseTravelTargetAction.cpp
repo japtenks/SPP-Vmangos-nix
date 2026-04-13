@@ -11,6 +11,120 @@
 
 using namespace ai;
 
+namespace
+{
+    SessionState GetSessionStateForPurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::QuestGiver:
+            case TravelDestinationPurpose::QuestObjective1:
+            case TravelDestinationPurpose::QuestObjective2:
+            case TravelDestinationPurpose::QuestObjective3:
+            case TravelDestinationPurpose::QuestObjective4:
+            case TravelDestinationPurpose::QuestTaker:
+                return SessionState::QUESTING;
+            case TravelDestinationPurpose::Vendor:
+            case TravelDestinationPurpose::AH:
+            case TravelDestinationPurpose::Repair:
+            case TravelDestinationPurpose::Mail:
+            case TravelDestinationPurpose::Trainer:
+                return SessionState::MAINTENANCE;
+            case TravelDestinationPurpose::Boss:
+                return SessionState::DUNGEON_RUN;
+            case TravelDestinationPurpose::None:
+                return SessionState::IDLE;
+            default:
+                return SessionState::TRAVELLING;
+        }
+    }
+
+    uint32 GetTravelTargetQuestId(const TravelTarget* target)
+    {
+        if (!target || !target->GetDestination())
+            return 0;
+
+        if (QuestTravelDestination* questDestination = dynamic_cast<QuestTravelDestination*>(target->GetDestination()))
+            return questDestination->GetQuestId();
+
+        return 0;
+    }
+
+    bool TravelTargetMatchesCommittedTask(const TravelTarget* target, const CommittedTask& task)
+    {
+        if (!target || !target->GetDestination() || task.purpose == TravelDestinationPurpose::None)
+            return false;
+
+        if (target->GetDestination()->GetPurpose() != task.purpose)
+            return false;
+
+        uint32 questId = GetTravelTargetQuestId(target);
+        if (task.questId || questId)
+            return task.questId == questId;
+
+        return true;
+    }
+
+    InterruptTier GetTravelTargetInterruptTier(const TravelTarget* target)
+    {
+        CommittedTask tempTask;
+        if (target && target->GetDestination())
+            tempTask.purpose = target->GetDestination()->GetPurpose();
+
+        return tempTask.GetInterruptTier();
+    }
+
+    void UpdateCommittedTaskFromTravelTarget(PlayerbotAI* ai, const TravelTarget* target)
+    {
+        if (!ai)
+            return;
+
+        CommittedTask& committedTask = ai->GetCommittedTask();
+        committedTask.Clear();
+
+        if (!target || !target->GetDestination())
+            return;
+
+        committedTask.purpose = target->GetDestination()->GetPurpose();
+        committedTask.questId = GetTravelTargetQuestId(target);
+        committedTask.retryCount = static_cast<uint8>(std::min<uint32>(target->GetRetryCount(false), std::numeric_limits<uint8>::max()));
+        committedTask.lastValidityCheck = time(nullptr);
+        committedTask.isValid = committedTask.purpose != TravelDestinationPurpose::None;
+    }
+
+    bool CanReplaceSession(const BotSession& session, SessionState candidateState)
+    {
+        if (candidateState == SessionState::IDLE)
+            return true;
+
+        if (session.isPaused)
+            return true;
+
+        if (session.state == SessionState::IDLE || session.state == SessionState::TRAVELLING)
+            return true;
+
+        return session.state == candidateState;
+    }
+
+    void UpdateSessionFromTravelTarget(PlayerbotAI* ai, const TravelTarget* target)
+    {
+        if (!ai || !target || !target->GetDestination())
+            return;
+
+        SessionState sessionState = GetSessionStateForPurpose(target->GetDestination()->GetPurpose());
+        if (sessionState == SessionState::IDLE)
+            return;
+
+        BotSession& session = ai->GetSession();
+        if (session.state != sessionState || session.isPaused)
+        {
+            session.Reset(sessionState);
+            const ArchetypeWeights& weights = ai->GetArchetypeWeights();
+            session.plannedDuration = (weights.minSessionMinutes + weights.maxSessionMinutes) / 2;
+        }
+    }
+}
+
 inline std::string GetTravelPurposeName(std::string purpose)
 {
     if (Qualified::isValidNumberString(purpose) && TravelDestinationPurposeName.find(TravelDestinationPurpose(stoi(purpose))) != TravelDestinationPurposeName.end())
@@ -78,7 +192,36 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         return false;
     }
 
+    SessionState candidateSessionState = GetSessionStateForPurpose(newTarget.GetDestination()->GetPurpose());
+    const BotSession& currentSession = ai->GetSession();
+    if (!CanReplaceSession(currentSession, candidateSessionState))
+    {
+        ai->TellDebug(requester, "Keeping current " + SessionStateToString(currentSession.state) + " session instead of switching to " + SessionStateToString(candidateSessionState) + ".", "debug travel");
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+        return false;
+    }
+
+    CommittedTask& committedTask = ai->GetCommittedTask();
+    if (committedTask.ValidateTarget(ai) && !TravelTargetMatchesCommittedTask(&newTarget, committedTask))
+    {
+        InterruptTier newTier = GetTravelTargetInterruptTier(&newTarget);
+        if (!committedTask.CanBePreemptedBy(newTier))
+        {
+            ai->TellDebug(requester, "Keeping committed " + InterruptTierToString(committedTask.GetInterruptTier()) + " task over new " + InterruptTierToString(newTier) + " target.", "debug travel");
+
+            if (TravelTargetMatchesCommittedTask(travelTarget, committedTask) && travelTarget->GetDestination() && travelTarget->IsDestinationActive() && travelTarget->IsConditionsActive())
+            {
+                travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+                return false;
+            }
+
+            committedTask.Clear();
+        }
+    }
+
     setNewTarget(requester, &newTarget, travelTarget);
+    UpdateCommittedTaskFromTravelTarget(ai, travelTarget);
+    UpdateSessionFromTravelTarget(ai, travelTarget);
     
     return true;
 }

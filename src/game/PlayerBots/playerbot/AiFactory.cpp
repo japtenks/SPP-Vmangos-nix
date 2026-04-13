@@ -17,6 +17,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
 #include "BattleGroundMgr.h"
+#include <random>
 
 AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* ai)
 {
@@ -85,6 +86,38 @@ AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* a
 #endif
     }
     return new AiObjectContext(ai);
+}
+
+BotArchetype AiFactory::AssignArchetype(Player* player)
+{
+    if (!player)
+        return BotArchetype::REGULAR;
+
+    std::mt19937 rng(player->GetGUIDLow());
+    std::discrete_distribution<int> distribution({35, 30, 15, 10, 8, 2});
+
+    return static_cast<BotArchetype>(distribution(rng));
+}
+
+ArchetypeWeights AiFactory::GetArchetypeWeights(BotArchetype archetype)
+{
+    switch (archetype)
+    {
+        case BotArchetype::CASUAL:
+            return {0.85f, 0.80f, 1.10f, 0.90f, 0.35f, 0.75f, 20, 90, 2.0f, 0.10f, 0.08f};
+        case BotArchetype::REGULAR:
+            return {1.00f, 1.00f, 1.00f, 1.00f, 0.28f, 0.55f, 30, 120, 3.5f, 0.20f, 0.05f};
+        case BotArchetype::RPG_QUEST:
+            return {1.15f, 1.20f, 1.10f, 0.95f, 0.30f, 0.50f, 45, 180, 3.0f, 0.18f, 0.04f};
+        case BotArchetype::GRINDER:
+            return {0.90f, 0.75f, 0.85f, 1.05f, 0.24f, 0.45f, 40, 150, 4.0f, 0.16f, 0.04f};
+        case BotArchetype::FARMER:
+            return {0.95f, 0.85f, 1.00f, 1.00f, 0.22f, 0.45f, 60, 240, 4.5f, 0.14f, 0.03f};
+        case BotArchetype::HARDCORE:
+            return {1.10f, 1.10f, 1.00f, 1.05f, 0.45f, 0.25f, 50, 210, 5.0f, 0.28f, 0.02f};
+        default:
+            return {};
+    }
 }
 
 int AiFactory::GetPlayerSpecTab(const Player* bot)

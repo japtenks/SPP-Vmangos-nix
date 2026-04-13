@@ -8,9 +8,11 @@
 #include "PlayerbotSecurity.h"
 #include "PlayerbotTextMgr.h"
 #include "BotState.h"
+#include "BotArchetype.h"
 #include "PlayerTalentSpec.h"
 #include <stack>
 #include <future>
+#include <unordered_map>
 #include "strategy/IterateItemsMask.h"
 #include "RandomPlayerbotMgr.h"
 #include "VmangosCompat.h"
@@ -671,6 +673,21 @@ public:
     void SetLastEvent(Event& event) { lastEvent = event; }
     Event& GetLastEvent() { return lastEvent; }
 
+    BotArchetype GetArchetype() const { return archetype; }
+    const ArchetypeWeights& GetArchetypeWeights() const { return archetypeWeights; }
+    void ApplyArchetype(BotArchetype archetype, const ArchetypeWeights& weights);
+
+    BotSession& GetSession() { return botSession; }
+    const BotSession& GetSession() const { return botSession; }
+    void SetSessionState(SessionState state) { botSession.Reset(state); }
+
+    CommittedTask& GetCommittedTask() { return committedTask; }
+    const CommittedTask& GetCommittedTask() const { return committedTask; }
+    void ClearCommittedTask() { committedTask.Clear(); }
+
+    std::vector<std::pair<std::string, std::string>> SaveFrameworkState() const;
+    void LoadFrameworkState(const std::unordered_map<std::string, std::string>& values);
+
 #ifdef BUILD_ELUNA
     MaNGOS::unique_weak_ptr<PlayerbotAI> GetWeakPtr() const { return m_weakRef; }
     void SetWeakPtr(MaNGOS::unique_weak_ptr<PlayerbotAI> weakRef) { m_weakRef = std::move(weakRef); }
@@ -714,6 +731,10 @@ protected:
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
     bool shouldLogOut = false;
+    BotArchetype archetype = BotArchetype::REGULAR;
+    ArchetypeWeights archetypeWeights = {};
+    BotSession botSession = {};
+    CommittedTask committedTask = {};
     bool m_recordMessages = false;
     std::vector<std::string> m_recordedMessages;
     Event lastEvent;

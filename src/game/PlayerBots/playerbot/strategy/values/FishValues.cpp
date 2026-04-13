@@ -1,8 +1,29 @@
 
 #include "playerbot/playerbot.h"
 #include "FishValues.h"
+#include "playerbot/strategy/actions/TellLosAction.h"
 
 using namespace ai;
+
+static bool HasOwnedFishingBobber(PlayerbotAI* ai)
+{
+    Player* bot = ai->GetBot();
+    std::list<ObjectGuid> nearbyObjects = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid>>("nearest game objects no los")->Get();
+    std::list<GameObject*> objects = TellLosAction::GoGuidListToObjList(ai, nearbyObjects);
+
+    for (auto& obj : objects)
+    {
+        if (obj->GetEntry() != 35591)
+            continue;
+
+        if (obj->GetOwnerGuid() != bot->GetObjectGuid())
+            continue;
+
+        return true;
+    }
+
+    return false;
+}
 
 bool CanFishValue::Calculate()
 {
@@ -19,14 +40,7 @@ bool CanFishValue::Calculate()
 
 bool CanOpenFishingDobberValue::Calculate()
 {
-    if (!bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
-        return false;
-
-    std::string spellName = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL)->m_spellInfo->SpellName[0];
-    if (spellName.find("Fishing") != 0)
-        return false;
-
-    return true;
+    return HasOwnedFishingBobber(ai);
 }
 
 bool DoneFishingValue::Calculate()
@@ -40,6 +54,9 @@ bool DoneFishingValue::Calculate()
     if (!mhItem || mhItem->GetProto()->Class != ITEM_CLASS_WEAPON || mhItem->GetProto()->SubClass != ITEM_SUBCLASS_WEAPON_FISHING_POLE)
         return false;
 
+    if (HasOwnedFishingBobber(ai))
+        return false;
+
     if (bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
     {
         std::string spellName = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL)->m_spellInfo->SpellName[0];
@@ -49,5 +66,3 @@ bool DoneFishingValue::Calculate()
 
     return true;
 }
-
-

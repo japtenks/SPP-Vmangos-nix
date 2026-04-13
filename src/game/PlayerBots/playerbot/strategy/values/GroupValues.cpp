@@ -68,7 +68,7 @@ uint32 GroupBoolCountValue::Calculate()
             continue;
 
         if (PAI_VALUE2(bool, "and", getQualifier()))
-            return count++;
+            ++count;
     }
 
     return count;

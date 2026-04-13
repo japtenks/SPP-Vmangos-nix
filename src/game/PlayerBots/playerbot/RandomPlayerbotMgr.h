@@ -70,6 +70,7 @@ class RandomPlayerbotMgr : public PlayerbotHolder
         virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
 private:
         void ScaleBotActivity();
+        void UpdateCommittedTaskValidity(const std::list<uint32>& availableBots, uint32 maxBots);
         void LogPlayerLocation();
         void DelayedFacingFix();
         void LoginFreeBots();
@@ -244,6 +245,7 @@ public:
         uint32 playersLevel = 0;
         uint32 botCount = 0;
         uint32 activeBots = 0;        
+        uint32 committedTaskUpdateCursor = 0;
 
         std::unordered_map<uint32, std::vector<std::pair<int32,int32>>> playerBotMoveLog;
         typedef std::unordered_map <uint32, std::list<float>> botPerformanceMetric;

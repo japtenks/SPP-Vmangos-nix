@@ -15,6 +15,67 @@
 using namespace ai;
 using namespace MaNGOS;
 
+namespace
+{
+    SessionState GetSessionStateForTravelPurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::QuestGiver:
+            case TravelDestinationPurpose::QuestObjective1:
+            case TravelDestinationPurpose::QuestObjective2:
+            case TravelDestinationPurpose::QuestObjective3:
+            case TravelDestinationPurpose::QuestObjective4:
+            case TravelDestinationPurpose::QuestTaker:
+                return SessionState::QUESTING;
+            case TravelDestinationPurpose::Vendor:
+            case TravelDestinationPurpose::AH:
+            case TravelDestinationPurpose::Repair:
+            case TravelDestinationPurpose::Mail:
+            case TravelDestinationPurpose::Trainer:
+                return SessionState::MAINTENANCE;
+            case TravelDestinationPurpose::Boss:
+                return SessionState::DUNGEON_RUN;
+            case TravelDestinationPurpose::None:
+                return SessionState::IDLE;
+            default:
+                return SessionState::TRAVELLING;
+        }
+    }
+
+    uint32 GetTravelTargetQuestId(const TravelTarget* target)
+    {
+        if (!target || !target->GetDestination())
+            return 0;
+
+        if (QuestTravelDestination* questDestination = dynamic_cast<QuestTravelDestination*>(target->GetDestination()))
+            return questDestination->GetQuestId();
+
+        return 0;
+    }
+
+    void ReleaseFrameworkTravelState(TravelTarget* target)
+    {
+        if (!target || !target->GetDestination())
+            return;
+
+        PlayerbotAI* ai = target->GetAiObjectContext() ? target->GetAiObjectContext()->GetAi() : nullptr;
+        if (!ai)
+            return;
+
+        const TravelDestinationPurpose purpose = target->GetDestination()->GetPurpose();
+        const uint32 questId = GetTravelTargetQuestId(target);
+
+        CommittedTask& committedTask = ai->GetCommittedTask();
+        if (committedTask.purpose == purpose && committedTask.questId == questId)
+            committedTask.Clear();
+
+        BotSession& session = ai->GetSession();
+        if (!session.isPaused && session.state == GetSessionStateForTravelPurpose(purpose))
+            session.Reset(SessionState::IDLE);
+    }
+}
+
 PlayerTravelInfo::PlayerTravelInfo(Player* player)
 {
     PlayerbotAI* ai = player->GetPlayerbotAI();
@@ -966,6 +1027,7 @@ void TravelTarget::CheckStatus()
     if (!ai->HasStrategy("travel", BotState::BOT_STATE_NON_COMBAT) && !ai->HasStrategy("travel once", BotState::BOT_STATE_NON_COMBAT))
     {
         ai->TellDebug(ai->GetMaster(), "The target is clearing because it was a travel once destination.", "debug travel");
+        ReleaseFrameworkTravelState(this);
         sTravelMgr.SetNullTravelTarget(this);
         return;
     }
@@ -973,6 +1035,7 @@ void TravelTarget::CheckStatus()
     if (statusTime != 0 && GetTimeLeft() <= 0 && !IsForced())
     {
         ai->TellDebug(ai->GetMaster(), "Travel target expired because the status time was exceeded.", "debug travel");
+        ReleaseFrameworkTravelState(this);
         SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
         ai->GetAiObjectContext()->ClearValues("no active travel destinations");
         return;
@@ -988,6 +1051,7 @@ void TravelTarget::CheckStatus()
             {
                 ai->TellDebug(ai->GetMaster(), "The target is clearing because it was a travel once destination.", "debug travel");
                 ai->ChangeStrategy("nc -travel once", BotState::BOT_STATE_NON_COMBAT);
+                ReleaseFrameworkTravelState(this);
                 sTravelMgr.SetNullTravelTarget(this);
                 return;
             }
@@ -1008,6 +1072,7 @@ void TravelTarget::CheckStatus()
         {
             ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
             forced = false;
+            ReleaseFrameworkTravelState(this);
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
             return;
         }
@@ -2689,6 +2754,7 @@ void TravelMgr::SetNullTravelTarget(TravelTarget* target) const
 {
     if (target)
     {
+        ReleaseFrameworkTravelState(target);
         target->SetTarget(nullTravelDestination, nullWorldPosition);
         target->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
     }

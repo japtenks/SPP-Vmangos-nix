@@ -103,6 +103,7 @@
 #include "GlyphValues.h"
 #include "StuckValues.h"
 #include "FishValues.h"
+#include "FrameworkValues.h"
 #include "RuneForgeValues.h"
 #include "WorldBuffTravelValues.h"
 
@@ -446,6 +447,12 @@ namespace ai
 
             creators["party tank without lifebloom"] = [](PlayerbotAI* ai) { return new PartyTankWithoutLifebloomValue(ai); };
             creators["move style"] = [](PlayerbotAI* ai) { return new MoveStyleValue(ai); };
+            creators["session state"] = [](PlayerbotAI* ai) { return new SessionStateValue(ai); };
+            creators["session paused"] = [](PlayerbotAI* ai) { return new SessionPausedValue(ai); };
+            creators["committed task valid"] = [](PlayerbotAI* ai) { return new CommittedTaskValidValue(ai); };
+            creators["committed task tier"] = [](PlayerbotAI* ai) { return new CommittedTaskTierValue(ai); };
+            creators["committed task purpose"] = [](PlayerbotAI* ai) { return new CommittedTaskPurposeValue(ai); };
+            creators["committed task quest"] = [](PlayerbotAI* ai) { return new CommittedTaskQuestValue(ai); };
             creators["available glyphs"] = [](PlayerbotAI* ai) { return new AvailableGlyphsValue(ai); };
             creators["wanted glyphs"] = [](PlayerbotAI* ai) { return new WantedGlyphsValue(ai); };
             creators["equiped glyphs"] = [](PlayerbotAI* ai) { return new EquipedGlyphsValue(ai); };

@@ -107,6 +107,7 @@ namespace ai
 		bool IsOnline() const { return loginState == LoginState::BOT_ONLINE || loginState == LoginState::BOT_ON_LOGOUTQUEUE; }
 		LoginState GetLoginState() const { return loginState; }
 
+		bool CanSendHolder() const;
 		bool SendHolder();
 		void MarkHolderReceived();
 
@@ -120,6 +121,7 @@ namespace ai
 		LoginCriterionFailType MatchNoCriteria(const LoginSpace& space, const LoginCriteria& criteria) const;
 
 		void Update(Player* player);
+		void MarkOffline();
 		bool LoginBot();
 		bool LogoutBot();
 	private:
@@ -144,13 +146,17 @@ namespace ai
 	public:
 		void Update(RealPlayers& realPlayers);
 		void ToggleDebug() { debug = !debug; }
+		bool HasPool() const { return !botPool.empty(); }
+		bool HasTrackedBot(uint32 guid) const;
+		std::list<uint32> GetTrackedBotIds() const;
 		void HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> dummy, SqlQueryHolder* holder);
 	private:
 		static BotPool LoadBotsFromDb();
 		void UpdateOnlineBots();
-		static BotInfos FillLoginLogoutQueue(BotPool* pool, const RealPlayers& realPlayers);
+		static BotInfos FillLoginLogoutQueue(BotPool* pool, const RealPlayers& realPlayers, uint32 maxLoginsPerInterval, bool debug);
 		void LoginLogoutBots(const BotInfos& queue);
 		void CollectReadyHolders();
+		uint32 GetMaxLoginsPerInterval() const;
 
 		static RealPlayerInfos GetPlayerInfos(const RealPlayers& realPlayers);
 		static uint32 GetLoginCriteriaSize();
@@ -164,13 +170,14 @@ namespace ai
 		static uint32 GetLevelBucketSize(uint32 level);
 		static void FillLoginSpace(BotPool* pool, LoginSpace& space, FillStep step);
 
-		static void SendHolders(const BotInfos& queue);
-		static void SendHolders(BotPool* pool);
+		static void SendHolders(const BotInfos& queue, uint32 maxHoldersPerInterval);
+		static void SendHolders(BotPool* pool, uint32 maxHoldersPerInterval);
 
 		std::future<BotInfos> futureQueue;
 		std::future<BotPool> futurePool;
 
 		bool debug = false;
+		uint32 startupRampStartMs = 0;
 		BotInfos onlineBots;
 		BotPool botPool;
 		std::mutex readyHolderMutex;

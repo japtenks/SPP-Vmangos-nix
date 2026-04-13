@@ -1,5 +1,6 @@
 #include "Config/Config.h"
 
+#include "playerbot/BotArchetype.h"
 #include "playerbot/playerbot.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
@@ -638,6 +639,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         AddOfflineGroupBots();
 
     uint32 updateBots = sPlayerbotAIConfig.randomBotsPerInterval == 0 ? UINT32_MAX : sPlayerbotAIConfig.randomBotsPerInterval;
+    uint32 frameworkUpdateBots = sPlayerbotAIConfig.randomBotsPerInterval == 0 ? 25 : std::max<uint32>(1, sPlayerbotAIConfig.randomBotsPerInterval / 4);
 
     //Update bots
     for (auto bot : availableBots)
@@ -683,6 +685,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         }
     }
 
+    UpdateCommittedTaskValidity(availableBots, frameworkUpdateBots);
+
     LoginFreeBots();
 
     //sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "[char %d, bot %d]", CharacterDatabase.m_threadBody->m_sqlQueue.size(), CharacterDatabase.m_threadBody->m_sqlQueue.size());
@@ -700,6 +704,45 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     //Ping character database.
     // AsyncPQuery ping not compatible with vmangos
+}
+
+void RandomPlayerbotMgr::UpdateCommittedTaskValidity(const std::list<uint32>& availableBots, uint32 maxBots)
+{
+    if (!maxBots || availableBots.empty())
+        return;
+
+    uint32 listSize = availableBots.size();
+    committedTaskUpdateCursor %= listSize;
+
+    auto itr = availableBots.begin();
+    std::advance(itr, committedTaskUpdateCursor);
+
+    uint32 processed = 0;
+    uint32 visited = 0;
+    while (visited < listSize && processed < maxBots)
+    {
+        if (itr == availableBots.end())
+            itr = availableBots.begin();
+
+        Player* player = GetPlayerBot(*itr);
+        if (player)
+        {
+            PlayerbotAI* ai = player->GetPlayerbotAI();
+            if (ai)
+            {
+                CommittedTask& committedTask = ai->GetCommittedTask();
+                if (committedTask.purpose != TravelDestinationPurpose::None || committedTask.questId != 0 || committedTask.targetGuid)
+                    committedTask.ValidateTarget(ai);
+            }
+
+            ++processed;
+        }
+
+        ++itr;
+        ++visited;
+    }
+
+    committedTaskUpdateCursor = (committedTaskUpdateCursor + visited) % listSize;
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()
@@ -1925,7 +1968,8 @@ bool RandomPlayerbotMgr::AddRandomBot(uint32 bot)
         SetEventValue(bot, "login", 1, -1);
         uint32 randomTime = urand(sPlayerbotAIConfig.minRandomBotReviveTime, sPlayerbotAIConfig.maxRandomBotReviveTime);
         SetEventValue(bot, "update", 1, randomTime);
-        currentBots.push_back(bot);
+        if (!sPlayerbotAIConfig.asyncBotLogin)
+            currentBots.push_back(bot);
         sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Random bot added #%d", bot);
     }
 
@@ -1977,7 +2021,8 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
         else
             sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Bot #%d %s:%d <%s>: log out", bot, IsAlliance(player->GetRace()) ? "A" : "H", player->GetLevel(), player->GetName());
 
-        currentBots.remove(bot);
+        if (!sPlayerbotAIConfig.asyncBotLogin)
+            currentBots.remove(bot);
         SetEventValue(bot, "add", 0, 0);
 
         if (!player)
@@ -3015,11 +3060,17 @@ bool RandomPlayerbotMgr::IsRandomBot(uint32 bot)
     if (sPlayerbotAIConfig.IsInRandomAccountList(sObjectMgr.GetPlayerAccountIdByGUID(guid)))
         return true;
 
+    if (sPlayerbotAIConfig.asyncBotLogin && sPlayerBotLoginMgr.HasPool() && sPlayerBotLoginMgr.HasTrackedBot(bot))
+        return true;
+
     return GetEventValue(bot, "add");
 }
 
 std::list<uint32> RandomPlayerbotMgr::GetBots()
 {
+    if (sPlayerbotAIConfig.asyncBotLogin && sPlayerBotLoginMgr.HasPool())
+        return sPlayerBotLoginMgr.GetTrackedBotIds();
+
     if (!currentBots.empty()) return currentBots;
 
     auto results = CharacterDatabase.Query(
@@ -3462,7 +3513,8 @@ void RandomPlayerbotMgr::OnPlayerLoginError(uint32 bot)
 {
     SetEventValue(bot, "add", 0, 0);
     SetEventValue(bot, "login", 0, 0);
-    currentBots.remove(bot);
+    if (!sPlayerbotAIConfig.asyncBotLogin)
+        currentBots.remove(bot);
 }
 
 Player* RandomPlayerbotMgr::GetRandomPlayer()

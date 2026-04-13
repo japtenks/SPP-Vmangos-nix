@@ -15,6 +15,7 @@ namespace ai
         PlayerbotAIAware(PlayerbotAI* const ai) : ai(ai) { }
         virtual ~PlayerbotAIAware() = default;
         virtual std::string getName() { return std::string(); }
+        PlayerbotAI* GetAi() const { return ai; }
     protected:
         PlayerbotAI* ai;
     };

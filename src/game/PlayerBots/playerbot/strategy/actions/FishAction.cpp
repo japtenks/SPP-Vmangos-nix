@@ -83,6 +83,9 @@ bool FishAction::isUseful()
     if (!AI_VALUE(bool, "can fish"))
         return false;
 
+    if (AI_VALUE(bool, "can open fishing dobber"))
+        return false;
+
     if (fishSpot.distance(bot) > 1.0f)
         return false;
 

@@ -5,6 +5,7 @@
 #include "PlayerbotDbStore.h"
 #include <cstdlib>
 #include <iostream>
+#include <unordered_map>
 
 #include "LootObjectStack.h"
 #include "strategy/values/Formations.h"
@@ -26,6 +27,7 @@ void PlayerbotDbStore::Load(PlayerbotAI *ai, std::string preset)
         ai->ChangeStrategy("+chat", BotState::BOT_STATE_NON_COMBAT);
 
         std::list<std::string> values;
+        std::unordered_map<std::string, std::string> frameworkValues;
         do
         {
             Field* fields = results->Fetch();
@@ -36,9 +38,11 @@ void PlayerbotDbStore::Load(PlayerbotAI *ai, std::string preset)
             else if (key == "nc") ai->ChangeStrategy(value, BotState::BOT_STATE_NON_COMBAT);
             else if (key == "dead") ai->ChangeStrategy(value, BotState::BOT_STATE_DEAD);
             else if (key == "react") ai->ChangeStrategy(value, BotState::BOT_STATE_REACTION);
+            else if (key.find("framework.") == 0) frameworkValues[key] = value;
         } while (results->NextRow());
 
         ai->GetAiObjectContext()->Load(values);
+        ai->LoadFrameworkState(frameworkValues);
     }
 }
 
@@ -54,14 +58,31 @@ void PlayerbotDbStore::Save(PlayerbotAI *ai, std::string preset)
         SaveValue(guid, preset, "value", *i);
     }
 
-    SaveValue(guid, preset, "co", FormatStrategies("co", ai->GetStrategies(BotState::BOT_STATE_COMBAT)));
-    SaveValue(guid, preset, "nc", FormatStrategies("nc", ai->GetStrategies(BotState::BOT_STATE_NON_COMBAT)));
-    SaveValue(guid, preset, "dead", FormatStrategies("dead", ai->GetStrategies(BotState::BOT_STATE_DEAD)));
-    SaveValue(guid, preset, "react", FormatStrategies("react", ai->GetStrategies(BotState::BOT_STATE_REACTION)));
+    for (const auto& [key, value] : ai->SaveFrameworkState())
+        SaveValue(guid, preset, key, value);
+
+    std::string combatStrategies = FormatStrategies("co", ai->GetStrategies(BotState::BOT_STATE_COMBAT));
+    if (!combatStrategies.empty())
+        SaveValue(guid, preset, "co", combatStrategies);
+
+    std::string nonCombatStrategies = FormatStrategies("nc", ai->GetStrategies(BotState::BOT_STATE_NON_COMBAT));
+    if (!nonCombatStrategies.empty())
+        SaveValue(guid, preset, "nc", nonCombatStrategies);
+
+    std::string deadStrategies = FormatStrategies("dead", ai->GetStrategies(BotState::BOT_STATE_DEAD));
+    if (!deadStrategies.empty())
+        SaveValue(guid, preset, "dead", deadStrategies);
+
+    std::string reactStrategies = FormatStrategies("react", ai->GetStrategies(BotState::BOT_STATE_REACTION));
+    if (!reactStrategies.empty())
+        SaveValue(guid, preset, "react", reactStrategies);
 }
 
 std::string PlayerbotDbStore::FormatStrategies(std::string type, std::list<std::string> strategies)
 {
+    if (strategies.empty())
+        return "";
+
     std::ostringstream out;
     for(const auto& strategy : strategies)
         out << "+" << strategy << ",";

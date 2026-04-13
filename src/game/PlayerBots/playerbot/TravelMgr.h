@@ -340,6 +340,7 @@ namespace ai
 		TravelTarget(PlayerbotAI* ai);
 		TravelTarget(PlayerbotAI* ai, TravelDestination* tDestination1, WorldPosition* wPosition1) : AiObject(ai) { SetTarget(tDestination1, wPosition1); }
 		~TravelTarget() noexcept override = default;
+		AiObjectContext* GetAiObjectContext() const { return context; }
 
 		float Distance(Player* bot) const { WorldPosition pos(bot);  return wPosition->distance(pos); };
 		TravelDestination* GetDestination() const { return tDestination; };
@@ -501,4 +502,3 @@ namespace ai
 }
 
 #define sTravelMgr MaNGOS::Singleton<TravelMgr>::Instance()
-
