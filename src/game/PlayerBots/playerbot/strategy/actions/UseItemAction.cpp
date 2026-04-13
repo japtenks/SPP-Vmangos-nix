@@ -212,6 +212,34 @@ bool IsDrink(const ItemPrototype* proto)
     return IsFoodOrDrink(proto, 59);
 }
 
+bool IsConsumableItem(const ItemPrototype* proto)
+{
+    return proto && proto->Class == ITEM_CLASS_CONSUMABLE;
+}
+
+bool IsTransientUseItemFailure(SpellCastResult result)
+{
+    switch (result)
+    {
+        case SPELL_FAILED_CASTER_DEAD:
+        case SPELL_FAILED_NO_PET:
+        case SPELL_FAILED_STUNNED:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool IsBlockedFromConsumableUse(Player* bot)
+{
+    return !bot->IsAlive() ||
+           bot->HasUnitState(UNIT_STATE_CAN_NOT_REACT_OR_LOST_CONTROL |
+                             UNIT_STATE_STUNNED |
+                             UNIT_STATE_PENDING_STUNNED |
+                             UNIT_STATE_CONFUSED |
+                             UNIT_STATE_FLEEING);
+}
+
 bool IsTargetValidForItemUse(uint32 itemID, Unit* target)
 {
     ItemRequiredTargetMapBounds bounds = sObjectMgr.GetItemRequiredTargetMapBounds(itemID);
@@ -549,6 +577,14 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
         return false;
     }
 
+    // Autonomous bots can try to chain emergency consumables while dead or hard crowd-controlled.
+    // Those attempts can never succeed and would otherwise spam the same prepare failure every tick.
+    if (IsConsumableItem(proto) && IsBlockedFromConsumableUse(bot))
+    {
+        SetDuration(sPlayerbotAIConfig.globalCoolDown);
+        return false;
+    }
+
     // Bind item on use if needed (same as HandleUseItemOpcode)
     if (itemUsed && (proto->Bonding == BIND_WHEN_USE || proto->Bonding == BIND_WHEN_PICKED_UP || proto->Bonding == BIND_QUEST_ITEM))
     {
@@ -708,8 +744,14 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
 
             if (result != SPELL_CAST_OK)
             {
-                sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "UseItemAction: item %u spell %u prepare failed with result %u for bot %s",
-                    itemId, spellInfo->Id, result, bot->GetName());
+                if (!IsTransientUseItemFailure(result))
+                {
+                    sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "UseItemAction: item %u spell %u prepare failed with result %u for bot %s",
+                        itemId, spellInfo->Id, result, bot->GetName());
+                }
+
+                if (IsConsumableItem(proto) && IsTransientUseItemFailure(result))
+                    SetDuration(sPlayerbotAIConfig.globalCoolDown);
             }
 
             bool successCast = result == SPELL_CAST_OK;
