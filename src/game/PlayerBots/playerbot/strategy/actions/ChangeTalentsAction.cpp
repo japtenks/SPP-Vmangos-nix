@@ -263,13 +263,30 @@ bool ChangeTalentsAction::AutoSelectTalents(std::ostringstream* out)
     //Continue the current spec
     if (specNo > 0)
     {
-        TalentSpec newSpec = *GetBestPremadeSpec(specId);
-        newSpec.CropTalents(bot);
-        newSpec.ApplyTalents(bot, out);
-        ai->UpdateTalentSpec();
-        if (newSpec.GetTalentPoints() > 0)
+        TalentPath* currentPath = getPremadePath(specId);
+        TalentSpec* currentSpec = GetBestPremadeSpec(specId);
+
+        // Random bot state can outlive premade-spec definitions across config or
+        // DB changes. Fall back into normal selection instead of crashing on a
+        // stale saved spec id.
+        if (currentPath && currentSpec)
         {
-            *out << "Upgrading spec " << "|h|cffffffff" << getPremadePath(specId)->name << " (" << newSpec.formatSpec(bot) << ")";
+            TalentSpec newSpec = *currentSpec;
+            newSpec.CropTalents(bot);
+            newSpec.ApplyTalents(bot, out);
+            ai->UpdateTalentSpec();
+            if (newSpec.GetTalentPoints() > 0)
+            {
+                *out << "Upgrading spec " << "|h|cffffffff" << currentPath->name << " (" << newSpec.formatSpec(bot) << ")";
+            }
+        }
+        else
+        {
+            // Reset to "pick again" so the existing selection flow can recover
+            // from missing or renamed premade paths.
+            *out << "Saved premade spec was not found. ";
+            specNo = 0;
+            specId = 0;
         }
     }
     else if (!specLink.empty())
@@ -342,8 +359,20 @@ bool ChangeTalentsAction::AutoSelectTalents(std::ostringstream* out)
         }
         else
         {
-            specId = PickPremadePath(paths, sRandomPlayerbotMgr.IsRandomBot(bot))->id;
-            TalentSpec newSpec = *GetBestPremadeSpec(specId);
+            TalentPath* selectedPath = PickPremadePath(paths, sRandomPlayerbotMgr.IsRandomBot(bot));
+            TalentSpec* selectedSpec = selectedPath ? GetBestPremadeSpec(selectedPath->id) : nullptr;
+            if (!selectedPath || !selectedSpec)
+            {
+                // A bad premade-spec registry should disable auto-selection for
+                // this pass, not take the bot login thread down with it.
+                *out << "No usable predefined talents found for this class.";
+                specId = -1;
+                specLink.clear();
+                goto finish_selection;
+            }
+
+            specId = selectedPath->id;
+            TalentSpec newSpec = *selectedSpec;
             specLink = newSpec.GetTalentLink();
             newSpec.CropTalents(bot);
             newSpec.ApplyTalents(bot, out);
@@ -352,10 +381,11 @@ bool ChangeTalentsAction::AutoSelectTalents(std::ostringstream* out)
             if (paths.size() > 1)
                 *out << "Found " << paths.size() << " possible specs to choose from. ";
 
-            *out << "Apply spec " << "|h|cffffffff" << getPremadePath(specId)->name << " " << newSpec.formatSpec(bot);
+            *out << "Apply spec " << "|h|cffffffff" << selectedPath->name << " " << newSpec.formatSpec(bot);
         }
     }
 
+finish_selection:
     sRandomPlayerbotMgr.SetValue(bot->GetGUIDLow(), "specNo", specId + 1);
     if (!specLink.empty() && specId == -1)
         sRandomPlayerbotMgr.SetValue(bot->GetGUIDLow(), "specLink", 1, specLink);
@@ -369,6 +399,9 @@ bool ChangeTalentsAction::AutoSelectTalents(std::ostringstream* out)
 TalentSpec* ChangeTalentsAction::GetBestPremadeSpec(int specId)
 {
     TalentPath* path = getPremadePath(specId);
+    if (!path)
+        return nullptr;
+
     for (auto& spec : path->talentSpec)
     {
         if (spec.points >= bot->CalculateTalentsPoints())
@@ -377,7 +410,7 @@ TalentSpec* ChangeTalentsAction::GetBestPremadeSpec(int specId)
     if (path->talentSpec.size())
         return &path->talentSpec.back();
 
-    return &sPlayerbotAIConfig.classSpecs[bot->GetClassMask()].baseSpec;
+    return &sPlayerbotAIConfig.classSpecs[bot->GetClass()].baseSpec;
 }
 
 bool AutoSetTalentsAction::Execute(Event& event)
@@ -403,5 +436,3 @@ bool AutoSetTalentsAction::Execute(Event& event)
 
     return true;
 }
-
-
