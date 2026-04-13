@@ -5,8 +5,11 @@
 #include "PlayerbotAIBase.h"
 #include "ObjectGuid.h"
 #include "Database/DatabaseEnv.h"
+#include "Database/SqlOperations.h"
 #include "SharedDefines.h"
+#include <mutex>
 #include <shared_mutex>
+#include <vector>
 
 
 class WorldPacket;
@@ -14,6 +17,20 @@ class Player;
 class Unit;
 class Object;
 class Item;
+
+class PlayerbotLoginQueryHolder : public SqlQueryHolder
+{
+public:
+    PlayerbotLoginQueryHolder(uint32 accountId, ObjectGuid guid);
+
+    ObjectGuid GetGuid() const { return m_guid; }
+    uint32 GetAccountId() const { return m_accountId; }
+    bool Initialize();
+
+private:
+    uint32 m_accountId;
+    ObjectGuid m_guid;
+};
 
 typedef std::map<uint32, Player*> PlayerBotMap;
 typedef std::map<std::string, std::set<std::string> > PlayerBotErrorMap;
@@ -33,6 +50,7 @@ public:
 
     virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
     void UpdateSessions(uint32 elapsed);
+    bool FinalizePlayerBotLogin(SqlQueryHolder* holder);
 
     void ForEachPlayerbot(std::function<void(Player*)> fct) const;
 
@@ -83,6 +101,7 @@ private:
     std::string HandleBotRecord(Player* bot, Player* master, const std::string param);
     std::string HandleBotRead(Player* bot, Player* master, const std::string param);
     std::string HandleBotClear(Player* bot, Player* master, const std::string param);
+    void DrainPendingBotLogins();
 
     std::string HandleBotAddLogin(Player* bot, Player* master, const std::string param);
     std::string HandleBotRemoveLogout(Player* bot, Player* master, const std::string param);
@@ -103,6 +122,8 @@ private:
 
     PlayerBotMap playerBots;
     mutable std::shared_mutex m_playerBotsMutex; // Protects playerBots for cross-thread iteration
+    std::mutex m_pendingLoginMutex;
+    std::vector<SqlQueryHolder*> pendingLoginHolders;
     std::map<std::string, HolderCommandHandler> m_holderHandlers;
     std::map<std::string, BotCommandHandler> m_botCommandHandlers;
     ObjectGuid m_spoofGuid;

@@ -1,5 +1,7 @@
 #include "WorldPosition.h"
 #include <future>
+#include <mutex>
+#include <unordered_set>
 
 namespace ai
 {
@@ -106,7 +108,7 @@ namespace ai
 		LoginState GetLoginState() const { return loginState; }
 
 		bool SendHolder();
-		void HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> /*dummy*/, SqlQueryHolder* holder);
+		void MarkHolderReceived();
 
 		void ResetLoginState();
 		void FillLoginSpace(LoginSpace& space, FillStep step = FillStep::NOW) const;
@@ -142,11 +144,13 @@ namespace ai
 	public:
 		void Update(RealPlayers& realPlayers);
 		void ToggleDebug() { debug = !debug; }
+		void HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> dummy, SqlQueryHolder* holder);
 	private:
 		static BotPool LoadBotsFromDb();
 		void UpdateOnlineBots();
 		static BotInfos FillLoginLogoutQueue(BotPool* pool, const RealPlayers& realPlayers);
 		void LoginLogoutBots(const BotInfos& queue);
+		void CollectReadyHolders();
 
 		static RealPlayerInfos GetPlayerInfos(const RealPlayers& realPlayers);
 		static uint32 GetLoginCriteriaSize();
@@ -169,6 +173,8 @@ namespace ai
 		bool debug = false;
 		BotInfos onlineBots;
 		BotPool botPool;
+		std::mutex readyHolderMutex;
+		std::unordered_set<uint32> readyHolders;
 	};
 }
 

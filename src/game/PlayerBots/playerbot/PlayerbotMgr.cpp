@@ -14,19 +14,10 @@
 
 class CharacterHandler;
 
-// Local definition matching the one in CharacterHandler.cpp
-class PlayerbotLoginQueryHolder : public SqlQueryHolder
+PlayerbotLoginQueryHolder::PlayerbotLoginQueryHolder(uint32 accountId, ObjectGuid guid)
+    : SqlQueryHolder(guid.GetCounter()), m_accountId(accountId), m_guid(guid)
 {
-private:
-    uint32 m_accountId;
-    ObjectGuid m_guid;
-public:
-    PlayerbotLoginQueryHolder(uint32 accountId, ObjectGuid guid)
-        : SqlQueryHolder(guid.GetCounter()), m_accountId(accountId), m_guid(guid) { }
-    ObjectGuid GetGuid() const { return m_guid; }
-    uint32 GetAccountId() const { return m_accountId; }
-    bool Initialize();
-};
+}
 
 bool PlayerbotLoginQueryHolder::Initialize()
 {
@@ -155,6 +146,19 @@ void PlayerbotHolder::MovePlayerBot(uint32 guid, PlayerbotHolder* newHolder)
 
 void PlayerbotHolder::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
+    DrainPendingBotLogins();
+}
+
+void PlayerbotHolder::DrainPendingBotLogins()
+{
+    std::vector<SqlQueryHolder*> readyLogins;
+    {
+        std::lock_guard<std::mutex> lock(m_pendingLoginMutex);
+        readyLogins.swap(pendingLoginHolders);
+    }
+
+    for (SqlQueryHolder* holder : readyLogins)
+        FinalizePlayerBotLogin(holder);
 }
 
 void PlayerbotHolder::UpdateSessions(uint32 elapsed)
@@ -957,6 +961,7 @@ PlayerbotMgr::~PlayerbotMgr()
 
 void PlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 {
+    PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
     SetAIInternalUpdateDelay(sPlayerbotAIConfig.reactDelay);
     CheckTellErrors(elapsed);
 }
@@ -2201,6 +2206,17 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> 
     if (!holder)
         return;
 
+    {
+        std::lock_guard<std::mutex> lock(m_pendingLoginMutex);
+        pendingLoginHolders.push_back(holder);
+    }
+}
+
+bool PlayerbotHolder::FinalizePlayerBotLogin(SqlQueryHolder* holder)
+{
+    if (!holder)
+        return false;
+
     PlayerbotLoginQueryHolder* lqh = (PlayerbotLoginQueryHolder*)holder;
     uint32 botAccountId = lqh->GetAccountId();
     ObjectGuid botGuid = lqh->GetGuid();
@@ -2209,7 +2225,7 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> 
     if (sObjectMgr.GetPlayer(botGuid))
     {
         delete holder;
-        return;
+        return false;
     }
 
     WorldSession* botSession = new WorldSession(botAccountId, nullptr, SEC_PLAYER, 0, LOCALE_enUS);
@@ -2228,7 +2244,7 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> 
     {
         sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Error logging in bot guid %u, please try to reset all random bots", botGuid.GetCounter());
         delete botSession;
-        return;
+        return false;
     }
 
     OnBotLogin(bot);
@@ -2239,4 +2255,6 @@ void PlayerbotHolder::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> 
     // calls ResetStrategies() on them, because this callback runs on a DB
     // worker thread and would corrupt engine data accessed by the map thread.
     sRandomPlayerbotMgr.OnBotLoginRegistration(bot);
+
+    return true;
 }

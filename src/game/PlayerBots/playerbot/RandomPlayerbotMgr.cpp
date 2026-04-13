@@ -566,6 +566,8 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     sMemoryMonitor.LogCount(sConfig.GetStringDefault("LogsDir", "") + "/" + "memory.csv");
 #endif
 
+    PlayerbotHolder::UpdateAIInternal(elapsed, minimal);
+
     if (!sPlayerbotAIConfig.randomBotAutologin || !sPlayerbotAIConfig.enabled)
         return;
 

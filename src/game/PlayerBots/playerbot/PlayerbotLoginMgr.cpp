@@ -8,36 +8,6 @@
 
 using namespace ai;
 
-class LoginQueryHolder : public SqlQueryHolder
-{
-private:
-    uint32 m_accountId;
-    ObjectGuid m_guid;
-public:
-    LoginQueryHolder(uint32 accountId, ObjectGuid guid)
-        : m_accountId(accountId), m_guid(guid) {
-    }
-    ObjectGuid GetGuid() const { return m_guid; }
-    uint32 GetAccountId() const { return m_accountId; }
-    bool Initialize();
-};
-
-class PlayerbotLoginQueryHolder : public LoginQueryHolder
-{
-private:
-    uint32 masterAccountId;
-    PlayerbotHolder* playerbotHolder;
-
-public:
-    PlayerbotLoginQueryHolder(PlayerbotHolder* playerbotHolder, uint32 masterAccount, uint32 accountId, uint32 guid)
-        : LoginQueryHolder(accountId, ObjectGuid(HIGHGUID_PLAYER, guid)), masterAccountId(masterAccount), playerbotHolder(playerbotHolder) {
-    }
-
-public:
-    uint32 GetMasterAccountId() const { return masterAccountId; }
-    PlayerbotHolder* GetPlayerbotHolder() { return playerbotHolder; }
-};
-
 PlayerLoginInfo::PlayerLoginInfo(const uint32 account, const uint32 guid, const uint8 race, const uint8 cls, const uint32 level, const bool isNew, const WorldPosition& position, const uint32 guildId) : account(account), guid(guid), race(race), cls(cls), level(level), isNew(isNew), position(position), guildId(guildId) {}
 
 PlayerLoginInfo::PlayerLoginInfo(Player* player) : PlayerLoginInfo(player->GetSession()->GetAccountId(), player->GetGUIDLow(), player->GetRace(), player->GetClass(), player->GetLevel(), player->GetTotalPlayedTime() == 0, player, player->GetGuildId()) {};
@@ -169,29 +139,31 @@ bool PlayerLoginInfo::SendHolder()
 
     holder = nullptr; 
 
-    holder = new PlayerbotLoginQueryHolder(&sRandomPlayerbotMgr, 0, account, guid);
+    holder = new PlayerbotLoginQueryHolder(account, ObjectGuid(HIGHGUID_PLAYER, guid));
 
     PlayerbotLoginQueryHolder* lqh = (PlayerbotLoginQueryHolder*)holder;
 
     if (!lqh->Initialize())
     {
         delete holder;                                      // delete all unprocessed queries
+        holder = nullptr;
+        holderState = HolderState::HOLDER_EMPTY;
         return false;
     }
 
-    CharacterDatabase.DelayQueryHolder(this, &PlayerLoginInfo::HandlePlayerBotLoginCallback, holder);
+    CharacterDatabase.DelayQueryHolder(&sPlayerBotLoginMgr, &PlayerBotLoginMgr::HandlePlayerBotLoginCallback, holder);
 
     return true;
 }
 
-void PlayerLoginInfo::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> /*dummy*/, SqlQueryHolder* holder)
+void PlayerLoginInfo::MarkHolderReceived()
 {
     if (!holder)
     {
         holderState = HolderState::HOLDER_EMPTY;
         return;
     }
-  
+
     holderState = HolderState::HOLDER_RECEIVED;
 }
 
@@ -304,7 +276,7 @@ bool PlayerLoginInfo::LoginBot()
         return false;
     }
 
-    sRandomPlayerbotMgr.HandlePlayerBotLoginCallback(nullptr, holder);
+    sRandomPlayerbotMgr.FinalizePlayerBotLogin(holder);
     holder = nullptr;
     holderState = HolderState::HOLDER_EMPTY;
 
@@ -356,40 +328,36 @@ bool PlayerLoginInfo::LogoutBot()
     return true;
 }
 
-template <typename T, typename Method, typename... Args>
-T GetFuture(Method&& method, std::future<T>& fut, bool restart, Args&&... args) {
-    bool isValid = fut.valid();
-    bool isReady = false;
-    T result = T{};
-
-    if (isValid)
-        isReady = fut.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-
-    if (isReady)
-        result = fut.get();
-
-    if(!isValid || (isReady && restart))
-        fut = std::async(std::launch::async, std::forward<Method>(method), std::forward<Args>(args)...);
-
-    return result;
-}
-
 void PlayerBotLoginMgr::Update(RealPlayers& realPlayers)
 {
     UpdateOnlineBots();
 
     if (botPool.empty())
     {
-        botPool = GetFuture(LoadBotsFromDb, futurePool, false);  
+        if (!futurePool.valid())
+            futurePool = std::async(std::launch::async, LoadBotsFromDb);
+        else if (futurePool.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            botPool = futurePool.get();
         return;
     }
 
-    BotInfos queue = GetFuture(FillLoginLogoutQueue, futureQueue, true, &botPool, realPlayers);
+    if (!futureQueue.valid())
+    {
+        CollectReadyHolders();
+        futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers);
+        return;
+    }
+
+    if (futureQueue.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return;
+
+    BotInfos queue = futureQueue.get();
+    CollectReadyHolders();
 
     if (!queue.empty())
-    {
-        this->LoginLogoutBots(queue);
-    }
+        LoginLogoutBots(queue);
+
+    futureQueue = std::async(std::launch::async, FillLoginLogoutQueue, &botPool, realPlayers);
 }
 
 BotPool PlayerBotLoginMgr::LoadBotsFromDb()
@@ -471,12 +439,19 @@ void PlayerBotLoginMgr::SendHolders(const BotInfos& queue)
 void PlayerBotLoginMgr::SendHolders(BotPool* pool)
 {
     // AsyncPQuery ping not compatible with vmangos
+    uint32 holdersSent = 0;
+    uint32 holderLimit = std::max<uint32>(1, sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval);
 
     for (auto& [guid, info] : *pool)
     {
+        if (holdersSent >= holderLimit)
+            break;
+
         if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") > 100)
             break;
-        info.SendHolder();
+
+        if (info.SendHolder())
+            ++holdersSent;
     }
 }
 
@@ -510,7 +485,8 @@ LoginCriteria PlayerBotLoginMgr::GetLoginCriteria(const uint8 attempt)
 {
     LoginCriteria criteria;
 
-    std::vector<std::string> configCriteria = sPlayerbotAIConfig.defaultLoginCriteria;
+    std::vector<std::string> configCriteria = { "maxbots", "classrace" };
+    configCriteria.insert(configCriteria.end(), sPlayerbotAIConfig.defaultLoginCriteria.begin(), sPlayerbotAIConfig.defaultLoginCriteria.end());
     std::vector<std::string> attemptCriteria = GetVariableLoginCriteria(attempt);
     configCriteria.insert(configCriteria.end(), attemptCriteria.begin(), attemptCriteria.end());
 
@@ -714,6 +690,32 @@ void PlayerBotLoginMgr::LoginLogoutBots(const BotInfos& queue)
         {
             onlineBots.erase(std::remove(onlineBots.begin(), onlineBots.end(), info), onlineBots.end());
         }
+    }
+}
+
+void PlayerBotLoginMgr::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> /*dummy*/, SqlQueryHolder* holder)
+{
+    if (!holder)
+        return;
+
+    PlayerbotLoginQueryHolder* loginHolder = static_cast<PlayerbotLoginQueryHolder*>(holder);
+    std::lock_guard<std::mutex> lock(readyHolderMutex);
+    readyHolders.insert(loginHolder->GetGuid().GetCounter());
+}
+
+void PlayerBotLoginMgr::CollectReadyHolders()
+{
+    std::unordered_set<uint32> completedGuids;
+    {
+        std::lock_guard<std::mutex> lock(readyHolderMutex);
+        completedGuids.swap(readyHolders);
+    }
+
+    for (uint32 guid : completedGuids)
+    {
+        auto itr = botPool.find(guid);
+        if (itr != botPool.end())
+            itr->second.MarkHolderReceived();
     }
 }
 
