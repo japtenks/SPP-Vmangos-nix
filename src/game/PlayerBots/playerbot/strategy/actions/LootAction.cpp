@@ -2,6 +2,8 @@
 #include "playerbot/playerbot.h"
 #include "LootAction.h"
 
+#include "Corpse.h"
+#include "LootMgr.h"
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/RandomPlayerbotMgr.h"
@@ -13,6 +15,41 @@
 
 
 using namespace ai;
+
+namespace
+{
+    Loot* ResolveLoot(Player* bot, ObjectGuid const& guid)
+    {
+        if (!bot || !bot->GetMap() || guid.IsEmpty())
+            return nullptr;
+
+        switch (guid.GetHigh())
+        {
+            case HIGHGUID_GAMEOBJECT:
+            {
+                GameObject* go = bot->GetMap()->GetGameObject(guid);
+                return go ? &go->loot : nullptr;
+            }
+            case HIGHGUID_ITEM:
+            {
+                Item* item = bot->GetItemByGuid(guid);
+                return item && item->HasGeneratedLoot() ? &item->loot : nullptr;
+            }
+            case HIGHGUID_CORPSE:
+            {
+                Corpse* corpse = bot->GetMap()->GetCorpse(guid);
+                return corpse ? &corpse->loot : nullptr;
+            }
+            case HIGHGUID_UNIT:
+            {
+                Creature* creature = bot->GetMap()->GetCreature(guid);
+                return creature ? &creature->loot : nullptr;
+            }
+            default:
+                return nullptr;
+        }
+    }
+}
 
 bool LootAction::Execute(Event& event)
 {
@@ -272,7 +309,7 @@ bool StoreLootAction::Execute(Event& event)
 
     bot->SetLootGuid(guid);
 
-    Loot* loot = (Loot*)nullptr /* sLootMgr not in vmangos */;
+    Loot* loot = ResolveLoot(bot, guid);
 
     if (!loot)
         return false;
@@ -290,7 +327,6 @@ bool StoreLootAction::Execute(Event& event)
         uint32 itemcount;
         uint8 lootslot_type;
         uint8 itemindex;
-        bool grab = false;
 
         p >> itemindex;
         p >> itemid;
@@ -319,13 +355,31 @@ bool StoreLootAction::Execute(Event& event)
         if (!proto)
             continue;
 
-        LootItem* lootItem = ((itemindex < loot->items.size()) ? &loot->items[itemindex] : nullptr);
+        QuestItem* questItem = nullptr;
+        QuestItem* ffaItem = nullptr;
+        QuestItem* conditionalItem = nullptr;
+        LootItem* lootItem = loot->LootItemInSlot(itemindex, bot->GetGUIDLow(), &questItem, &ffaItem, &conditionalItem);
 
         if (!lootItem)
             continue;
 
         //have no right to loot
-        if (false || lootItem->AllowedForPlayer(bot, nullptr) == false)
+        if (!lootItem->AllowedForPlayer(bot, loot->GetLootTarget()))
+            continue;
+
+        if (!questItem && lootItem->is_blocked)
+            continue;
+
+        if (guid.IsCreature() && !lootItem->is_underthreshold && !questItem && !ffaItem)
+        {
+            if (Group* group = bot->GetGroup())
+            {
+                if (group->GetLootMethod() == MASTER_LOOT)
+                    continue;
+            }
+        }
+
+        if (conditionalItem && conditionalItem->is_looted)
             continue;
 
         Player* master = ai->GetMaster();
