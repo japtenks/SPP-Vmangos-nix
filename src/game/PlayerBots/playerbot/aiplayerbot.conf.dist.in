@@ -631,6 +631,10 @@ AiPlayerbot.FleeingEnabled = 1
 # Intervals
 #AiPlayerbot.RandomBotUpdateInterval = 1000
 #AiPlayerbot.RandomBotsMaxLoginsPerInterval = 10
+# Gradually ramp random-bot login throughput after server start.
+# Set duration to 0 to disable the startup ramp.
+#AiPlayerbot.RandomBotStartupRampUpDuration = 900
+#AiPlayerbot.RandomBotStartupRampMinLoginsPerInterval = 5
 AiPlayerbot.RandomBotCountChangeMinInterval = 1800
 AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
 #AiPlayerbot.MinRandomBotInWorldTime = 3600

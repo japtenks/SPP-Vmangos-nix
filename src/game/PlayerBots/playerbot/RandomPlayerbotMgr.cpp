@@ -650,7 +650,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
         }
     }
 
-    uint32 maxLogins = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
+    uint32 maxLogins = GetMaxLoginsPerInterval();
 
     //Log in bots
     if (sRandomPlayerbotMgr.GetDatabaseDelay("CharacterDatabase") < 10 * IN_MILLISECONDS && !sPlayerbotAIConfig.asyncBotLogin && onlineBotCount < maxAllowedBotCount && maxLogins > 0)
@@ -698,6 +698,28 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     //Ping character database.
     // AsyncPQuery ping not compatible with vmangos
+}
+
+uint32 RandomPlayerbotMgr::GetMaxLoginsPerInterval() const
+{
+    uint32 configuredMax = sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval;
+    if (!configuredMax)
+        return 0;
+
+    uint32 rampDuration = sPlayerbotAIConfig.randomBotStartupRampUpDuration * IN_MILLISECONDS;
+    if (!rampDuration)
+        return configuredMax;
+
+    uint32 rampMin = std::min(sPlayerbotAIConfig.randomBotStartupRampMinLoginsPerInterval, configuredMax);
+    if (rampMin >= configuredMax)
+        return configuredMax;
+
+    uint32 elapsed = WorldTimer::getMSTime();
+    if (elapsed >= rampDuration)
+        return configuredMax;
+
+    uint32 rampRange = configuredMax - rampMin;
+    return rampMin + (rampRange * elapsed) / rampDuration;
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()

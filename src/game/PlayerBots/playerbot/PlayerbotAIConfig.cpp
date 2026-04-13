@@ -262,6 +262,8 @@ bool PlayerbotAIConfig::Initialize()
     randomBotTeleportMinInterval = config.GetIntDefault("AiPlayerbot.RandomBotTeleportTeleportMinInterval", 2 * 3600);
     randomBotTeleportMaxInterval = config.GetIntDefault("AiPlayerbot.RandomBotTeleportTeleportMaxInterval", 48 * 3600);
     randomBotsMaxLoginsPerInterval = config.GetIntDefault("AiPlayerbot.RandomBotsMaxLoginsPerInterval", 10);
+    randomBotStartupRampUpDuration = config.GetIntDefault("AiPlayerbot.RandomBotStartupRampUpDuration", 15 * 60);
+    randomBotStartupRampMinLoginsPerInterval = config.GetIntDefault("AiPlayerbot.RandomBotStartupRampMinLoginsPerInterval", 5);
     randomBotsPerInterval = config.GetIntDefault("AiPlayerbot.RandomBotsPerInterval", 0);
     minRandomBotsPriceChangeInterval = config.GetIntDefault("AiPlayerbot.MinRandomBotsPriceChangeInterval", 2 * 3600);
     maxRandomBotsPriceChangeInterval = config.GetIntDefault("AiPlayerbot.MaxRandomBotsPriceChangeInterval", 48 * 3600);
@@ -330,9 +332,9 @@ bool PlayerbotAIConfig::Initialize()
         loginCriteria.push_back({ "arena" });
         loginCriteria.push_back({ "bg" });
         loginCriteria.push_back({ "guild" });
-        loginCriteria.push_back({ "logoff,classrace,level,online" });
-        loginCriteria.push_back({ "logoff,classrace,level" });
-        loginCriteria.push_back({ "logoff,classrace" });
+        loginCriteria.push_back({ "logoff", "classrace", "level", "online" });
+        loginCriteria.push_back({ "logoff", "classrace", "level" });
+        loginCriteria.push_back({ "logoff", "classrace" });
     }
     
 
