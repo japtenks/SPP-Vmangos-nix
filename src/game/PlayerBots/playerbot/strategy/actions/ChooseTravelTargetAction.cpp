@@ -13,6 +13,78 @@ using namespace ai;
 
 namespace
 {
+    bool IsQuestPurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::QuestGiver:
+            case TravelDestinationPurpose::QuestObjective1:
+            case TravelDestinationPurpose::QuestObjective2:
+            case TravelDestinationPurpose::QuestObjective3:
+            case TravelDestinationPurpose::QuestObjective4:
+            case TravelDestinationPurpose::QuestTaker:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsMaintenancePurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::Vendor:
+            case TravelDestinationPurpose::AH:
+            case TravelDestinationPurpose::Repair:
+            case TravelDestinationPurpose::Mail:
+            case TravelDestinationPurpose::Trainer:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsLowPriorityPurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::GenericRpg:
+            case TravelDestinationPurpose::Explore:
+            case TravelDestinationPurpose::Grind:
+            case TravelDestinationPurpose::GatherFishing:
+            case TravelDestinationPurpose::GatherHerbalism:
+            case TravelDestinationPurpose::GatherMining:
+            case TravelDestinationPurpose::GatherSkinning:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool SessionAllowsPurpose(SessionState state, TravelDestinationPurpose purpose)
+    {
+        switch (state)
+        {
+            case SessionState::IDLE:
+            case SessionState::TRAVELLING:
+                return true;
+            case SessionState::QUESTING:
+                return IsQuestPurpose(purpose);
+            case SessionState::MAINTENANCE:
+                return IsMaintenancePurpose(purpose);
+            case SessionState::DUNGEON_RUN:
+                return purpose == TravelDestinationPurpose::Boss;
+            case SessionState::REP_FARMING:
+            case SessionState::TOURNAMENT:
+            case SessionState::RARE_HUNTING:
+            case SessionState::CRAFTING_COOLDOWN:
+            case SessionState::WORLD_PVP:
+                return IsLowPriorityPurpose(purpose);
+            default:
+                return false;
+        }
+    }
+
     SessionState GetSessionStateForPurpose(TravelDestinationPurpose purpose)
     {
         switch (purpose)
@@ -190,8 +262,25 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         return false;
     }
 
-    SessionState candidateSessionState = GetSessionStateForPurpose(newTarget.GetDestination()->GetPurpose());
-    const BotSession& currentSession = ai->GetSession();
+    const TravelDestinationPurpose newPurpose = newTarget.GetDestination()->GetPurpose();
+    SessionState candidateSessionState = GetSessionStateForPurpose(newPurpose);
+    BotSession& currentSession = ai->GetSession();
+    CommittedTask& committedTask = ai->GetCommittedTask();
+
+    const bool hasValidCommittedTask = committedTask.ValidateTarget(ai);
+    if (!hasValidCommittedTask && currentSession.state != SessionState::IDLE)
+        currentSession.Reset(SessionState::IDLE);
+
+    if ((currentSession.state != SessionState::IDLE && currentSession.state != SessionState::TRAVELLING) &&
+        !currentSession.isPaused &&
+        hasValidCommittedTask &&
+        !SessionAllowsPurpose(currentSession.state, newPurpose))
+    {
+        ai->TellDebug(requester, "Blocking " + TravelDestinationPurposeName.at(newPurpose) + " during " + SessionStateToString(currentSession.state) + " session.", "debug travel");
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+        return false;
+    }
+
     if (!CanReplaceSession(currentSession, candidateSessionState))
     {
         ai->TellDebug(requester, "Keeping current " + SessionStateToString(currentSession.state) + " session instead of switching to " + SessionStateToString(candidateSessionState) + ".", "debug travel");
@@ -199,9 +288,21 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         return false;
     }
 
-    CommittedTask& committedTask = ai->GetCommittedTask();
-    if (committedTask.ValidateTarget(ai) && !committedTask.MatchesTarget(&newTarget))
+    if (hasValidCommittedTask && !committedTask.MatchesTarget(&newTarget))
     {
+        if (IsQuestPurpose(committedTask.purpose) && IsMaintenancePurpose(newPurpose))
+        {
+            ai->TellDebug(requester, "Keeping committed quest task over maintenance target.", "debug travel");
+
+            if (committedTask.MatchesTarget(travelTarget) && travelTarget->GetDestination() && travelTarget->IsDestinationActive() && travelTarget->IsConditionsActive())
+            {
+                travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+                return false;
+            }
+
+            committedTask.Clear();
+        }
+
         InterruptTier newTier = GetTravelTargetInterruptTier(&newTarget);
         if (!committedTask.CanBePreemptedBy(newTier))
         {
