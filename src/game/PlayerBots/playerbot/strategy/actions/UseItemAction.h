@@ -659,6 +659,50 @@ namespace ai
             if (!bot->GetPowerType() == POWER_MANA)
                 return false;
 
+            if (ai->HasCheat(BotCheatMask::item))
+            {
+                if (bot->IsNonMeleeSpellCasted(true))
+                    return false;
+
+                bot->ClearUnitState(UNIT_STATE_CHASE);
+                bot->ClearUnitState(UNIT_STATE_FOLLOW);
+
+                if (ai->GetBot()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+                    ai->StopMoving();
+
+                if (sServerFacade.isMoving(bot))
+                {
+                    ai->StopMoving();
+                    SetDuration(sPlayerbotAIConfig.globalCoolDown);
+                    return false;
+                }
+
+                bot->SetStandState(UNIT_STAND_STATE_SIT);
+                ai->InterruptSpell();
+
+                float drinkDuration = AI_VALUE(float, "drink duration");
+                SpellEntry const* drinkSpell = sServerFacade.LookupSpellInfo(24355);
+                if (!drinkSpell)
+                    return false;
+
+                ai->Unmount();
+                ai->CastSpell(24355, bot);
+                SetDuration(drinkDuration);
+                bot->RemoveSpellCooldown(*drinkSpell);
+
+                if (AI_VALUE(bool, "should eat"))
+                {
+                    SpellEntry const* eatSpell = sServerFacade.LookupSpellInfo(24005);
+                    if (eatSpell)
+                    {
+                        ai->AddAura(bot, 24005);
+                        bot->RemoveSpellCooldown(*eatSpell);
+                    }
+                }
+
+                return true;
+            }
+
             Player* requester = event.getOwner();
             if (!GetInventoryItem(name))
                 return false;
@@ -692,6 +736,50 @@ namespace ai
         {
             if (sServerFacade.IsInCombat(bot))
                 return false;
+
+            if (ai->HasCheat(BotCheatMask::item))
+            {
+                if (bot->IsNonMeleeSpellCasted(true))
+                    return false;
+
+                bot->ClearUnitState(UNIT_STATE_CHASE);
+                bot->ClearUnitState(UNIT_STATE_FOLLOW);
+
+                if (ai->GetBot()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+                    ai->StopMoving();
+
+                if (sServerFacade.isMoving(bot))
+                {
+                    ai->StopMoving();
+                    SetDuration(sPlayerbotAIConfig.globalCoolDown);
+                    return false;
+                }
+
+                bot->SetStandState(UNIT_STAND_STATE_SIT);
+                ai->InterruptSpell();
+
+                float eatDuration = AI_VALUE(float, "eat duration");
+                SpellEntry const* eatSpell = sServerFacade.LookupSpellInfo(24005);
+                if (!eatSpell)
+                    return false;
+
+                ai->Unmount();
+                ai->CastSpell(24005, bot);
+                SetDuration(eatDuration);
+                bot->RemoveSpellCooldown(*eatSpell);
+
+                if (AI_VALUE(bool, "should drink"))
+                {
+                    SpellEntry const* drinkSpell = sServerFacade.LookupSpellInfo(24355);
+                    if (drinkSpell)
+                    {
+                        ai->AddAura(bot, 24355);
+                        bot->RemoveSpellCooldown(*drinkSpell);
+                    }
+                }
+
+                return true;
+            }
 
             Player* requester = event.getOwner();
             if (!GetInventoryItem(name))
