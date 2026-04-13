@@ -148,6 +148,8 @@ class RandomItemMgr
         static bool HandleConsoleCommand(ChatHandler* handler, char const* args);
         RandomItemList Query(uint32 level, RandomItemType type, RandomItemPredicate* predicate);
         RandomItemList Query(uint32 level, uint8 clazz, uint8 specId, uint8 slot, uint32 quality);
+        // Return the cached list by reference for hot equipment-generation paths
+        // that probe many nearby levels and slots and do not need a copy.
         RandomItemList const& QueryCache(uint32 level, uint8 clazz, uint8 specId, uint8 slot, uint32 quality);
         uint32 GetUpgrade(Player* player, std::string spec, uint8 slot, uint32 quality, uint32 itemId);
         std::vector<uint32> GetUpgradeList(Player* player, uint32 specId, uint8 slot, uint32 quality, uint32 itemId, uint32 amount = 1);

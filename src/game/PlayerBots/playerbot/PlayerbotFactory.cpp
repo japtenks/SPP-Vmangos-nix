@@ -2420,6 +2420,9 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool syncWithMaster, bool
                     bool hasProperLevel = false;
                     while (!hasProperLevel && currSearchLevel > 0)
                     {
+                        // We only read from the prebuilt cache here, so keep the
+                        // result as a reference instead of copying the candidate
+                        // list on every fallback-level probe.
                         RandomItemList const& newItems = sRandomItemMgr.QueryCache(currSearchLevel, bot->GetClass(), uint8(specId), slot, q);
                         if (newItems.size())
                             ids.insert(ids.begin(), newItems.begin(), newItems.end());
