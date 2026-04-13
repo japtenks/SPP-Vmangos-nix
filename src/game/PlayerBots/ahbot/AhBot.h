@@ -31,7 +31,6 @@ namespace ahbot
         }
 
     public:
-        static bool HandleAhBotCommand(ChatHandler* handler, char const* args);
         ObjectGuid GetAHBplayerGUID();
         void Init();
         void Update();

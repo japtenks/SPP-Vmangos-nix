@@ -10,11 +10,7 @@ ConfVersion=2019051400
 #
 ###################################################################################################################
 
-# Disable original AuctionHouseBot
-AuctionHouseBot.Seller.Enabled = 0
-AuctionHouseBot.Buyer.Enabled = 0
-
-# Replace with the new AhBot
+# AhBot runtime
 AhBot.Enabled = 1
 AhBot.Type = inventory
 AhBot.Backfill.Enabled = 1

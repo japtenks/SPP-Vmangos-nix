@@ -261,11 +261,7 @@ class ChatHandler
         bool HandleDebugMoveDistanceCommand(char* args);
         bool HandleDebugFaceMeCommand(char* args);
         // AHBot
-        bool HandleAHBotReloadCommand(char *);
-        bool HandleAHBotUpdateCommand(char *);
-        bool HandleAHBotRebuildCommand(char *);
-        bool HandleAHBotStatusCommand(char *);
-        bool HandleAHBotItemCommand(char *);
+        bool HandleAHBotCommand(char* args);
         //Bg
         bool HandleGoWarsongCommand(char *);
         bool HandleGoArathiCommand(char *);
