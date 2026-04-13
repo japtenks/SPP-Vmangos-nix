@@ -278,7 +278,7 @@ bool LootObject::IsLootPossible(Player* bot)
                                 hasQuestItems = true;
                             }
                         }
-                        return hasQuestItems || go->GetGoState() != GO_READY;
+    return hasQuestItems || go->GetGoState() != GO_STATE_READY;
                     }
                 }
             }
@@ -376,4 +376,3 @@ std::vector<LootObject> LootObjectStack::OrderByDistance(float maxDistance)
         result.push_back(i->second);
     return result;
 }
-

@@ -130,7 +130,7 @@ bool OpenLootAction::DoLoot(LootObject& lootObject)
             if (go->ActivateToQuest(bot))
             {
                 std::list<uint32> lootItems = GAI_VALUE2(std::list<uint32>, "entry loot list", -1*int32(go->GetEntry()));
-                isForQuest = !lootItems.empty() || go->GetGoState() != GO_READY;
+                isForQuest = !lootItems.empty() || go->GetGoState() != GO_STATE_READY;
             }
         }
 

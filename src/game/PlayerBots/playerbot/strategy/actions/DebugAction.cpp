@@ -2339,14 +2339,12 @@ bool DebugAction::HandleGO(Event& event, Player* requester, const std::string& t
 
         out << " lootState:";
 
-        if (lootState == GO_NOT_READY)
-            out << "GO_NOT_READY";
-        if (lootState == GO_READY)
-            out << "GO_READY";
-        if (lootState == GO_ACTIVATED)
-            out << "GO_ACTIVATED";
-        if (lootState == GO_JUST_DEACTIVATED)
-            out << "GO_JUST_DEACTIVATED";
+        if (lootState == GO_STATE_ACTIVE)
+            out << "GO_STATE_ACTIVE";
+        if (lootState == GO_STATE_READY)
+            out << "GO_STATE_READY";
+        if (lootState == GO_STATE_ACTIVE_ALTERNATIVE)
+            out << "GO_STATE_ACTIVE_ALTERNATIVE";
 
         ai->TellPlayerNoFacing(requester, out);
     }
