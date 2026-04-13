@@ -31,6 +31,9 @@ SpellCastResult BotUseItemSpell::ForceSpellStart(SpellCastTargets const* targets
     UpdateOriginalCasterPointer();
     UpdateCastStartPosition();
 
+    // Bots do not come through the normal client opcode path, so we need to
+    // schedule the spell event and run the same server-side startup steps here
+    // instead of short-circuiting item use as an immediate cast.
     // create and add update event for this spell
     SpellEvent* Event = new SpellEvent(this);
     m_caster->m_Events.AddEvent(Event, m_caster->m_Events.CalculateTime(1));
@@ -560,7 +563,8 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
     // (the real client prevents this via UI, but bots can have a pending spell from a prior AI action)
     bot->InterruptSpell(CURRENT_GENERIC_SPELL, false);
 
-    // Cast item spells the same way as Player::CastItemUseSpell
+    // Mirror Player::CastItemUseSpell so bot item use follows the same target
+    // validation and startup rules as a real player cast.
     uint8 successCasts = 0;
     Unit* unitTarget = nullptr;
     Item* itemTarget = nullptr;
