@@ -1,9 +1,21 @@
 
 #include "MaintenanceValues.h"
 #include "Mail.h"
+#include "MasterPlayer.h"
 #include "playerbot/strategy/values/GuildValues.h"
 
 using namespace ai;
+
+namespace
+{
+    MasterPlayer* GetMasterPlayerForMail(Player* bot)
+    {
+        if (!bot || !bot->GetSession())
+            return nullptr;
+
+        return bot->GetSession()->GetMasterPlayer();
+    }
+}
 
 bool ShouldAHSellValue::Calculate() 
 {
@@ -37,8 +49,7 @@ bool ShouldAHSellValue::Calculate()
             continue;
 
         if (!WorldPosition(bot).HasAreaFlag(AREA_FLAG_CAPITAL)) //We are not in a city so not easy to repair now.
-
-        if (bot->GetMoney() && (costs * 100) / bot->GetMoney() <= 10) //Would repairing this item use more than 10% of our current gold?
+            if (bot->GetMoney() && (costs * 100) / bot->GetMoney() <= 10) //Would repairing this item use more than 10% of our current gold?
                 continue;
 
         ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", ItemQualifier(item).GetQualifier());
@@ -61,8 +72,11 @@ bool CanGetMailValue::Calculate() {
         return false;
 
     time_t cur_time = time(0);
+    MasterPlayer* masterPlayer = GetMasterPlayerForMail(bot);
+    if (!masterPlayer)
+        return false;
 
-    for (PlayerMails::iterator itr = (PlayerMails::iterator()); itr != (PlayerMails::iterator()); ++itr)
+    for (PlayerMails::iterator itr = masterPlayer->GetMailBegin(); itr != masterPlayer->GetMailEnd(); ++itr)
     {
         if ((*itr)->state == MAIL_STATE_DELETED || cur_time < (*itr)->deliver_time)
             continue;
@@ -78,10 +92,13 @@ bool CanGetMailValue::Calculate() {
 
 bool ShouldGetMailValue::Calculate() {
     time_t cur_time = time(0);
+    MasterPlayer* masterPlayer = GetMasterPlayerForMail(bot);
+    if (!masterPlayer)
+        return false;
 
     bool hasGuildShareList = !AI_VALUE(std::vector<GuildShareItemEntry>, "guild share list").empty();
 
-    for (PlayerMails::iterator itr = (PlayerMails::iterator()); itr != (PlayerMails::iterator()); ++itr)
+    for (PlayerMails::iterator itr = masterPlayer->GetMailBegin(); itr != masterPlayer->GetMailEnd(); ++itr)
     {
         if ((*itr)->state == MAIL_STATE_DELETED || cur_time < (*itr)->deliver_time)
             continue;

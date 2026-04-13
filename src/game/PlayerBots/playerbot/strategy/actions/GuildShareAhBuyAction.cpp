@@ -1,5 +1,6 @@
 #include "playerbot/playerbot.h"
 #include "GuildShareAhBuyAction.h"
+#include "MasterPlayer.h"
 #include "playerbot/strategy/values/BudgetValues.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/ServerFacade.h"
@@ -95,8 +96,11 @@ uint32 GuildShareAhBuyAction::CountMailboxItems(uint32 itemId)
 {
     uint32 count = 0;
     time_t curTime = time(nullptr);
+    MasterPlayer* masterPlayer = bot->GetSession() ? bot->GetSession()->GetMasterPlayer() : nullptr;
+    if (!masterPlayer)
+        return 0;
 
-    for (PlayerMails::iterator itr = (PlayerMails::iterator()); itr != (PlayerMails::iterator()); ++itr)
+    for (PlayerMails::iterator itr = masterPlayer->GetMailBegin(); itr != masterPlayer->GetMailEnd(); ++itr)
     {
         Mail* mail = *itr;
         if (!mail || mail->state == MAIL_STATE_DELETED || curTime < mail->deliver_time)

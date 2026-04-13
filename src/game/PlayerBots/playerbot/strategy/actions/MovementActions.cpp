@@ -345,11 +345,14 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         if (transportName.empty())
             transportName = data->name;
 
+        ai->SetMoveToTransport(true);
+
         if (dockPosition.mapId == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
         {
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
+            ai->SetMoveToTransport(false);
 
             ai->TellDebug(ai->GetMaster(), "Leaving transport " + transportName, "debug move");
             return true;
@@ -418,6 +421,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
             }
 
             transport->AddPassenger(bot, true);
+            ai->SetMoveToTransport(true);
 
             ai->StopMoving();
 
@@ -439,6 +443,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         return false;
     }
 
+    ai->SetMoveToTransport(false);
     ai->TellDebug(ai->GetMaster(), "Waiting for transport on different map.", "debug move");
 
     return false;

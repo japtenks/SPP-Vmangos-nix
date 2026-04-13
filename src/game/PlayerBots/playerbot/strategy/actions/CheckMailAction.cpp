@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "CheckMailAction.h"
 #include "Mail.h"
+#include "MasterPlayer.h"
 
 #include "playerbot/PlayerbotAIConfig.h"
 using namespace ai;
@@ -14,9 +15,12 @@ bool CheckMailAction::Execute(Event& event)
     std::list<uint32> ids;
 
     PlayerMails mails;
+    MasterPlayer* masterPlayer = bot->GetSession() ? bot->GetSession()->GetMasterPlayer() : nullptr;
+    if (!masterPlayer)
+        return false;
 
     //Fetch mails first and then loop over them to prevent needing to check mails sent to self.
-    for (PlayerMails::iterator i = (PlayerMails::iterator()); i != (PlayerMails::iterator()); ++i)
+    for (PlayerMails::iterator i = masterPlayer->GetMailBegin(); i != masterPlayer->GetMailEnd(); ++i)
     {
         mails.push_back(*i);
     }

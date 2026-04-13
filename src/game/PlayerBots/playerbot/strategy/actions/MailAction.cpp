@@ -3,6 +3,7 @@
 #include "Mail.h"
 #include "playerbot/playerbot.h"
 #include "MailAction.h"
+#include "MasterPlayer.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/Helpers.h"
 
@@ -306,7 +307,11 @@ bool MailAction::Execute(Event& event)
 
     std::vector<Mail*> mailList;
     time_t cur_time = time(0);
-    for (PlayerMails::iterator itr = (PlayerMails::iterator()); itr != (PlayerMails::iterator()); ++itr)
+    MasterPlayer* masterPlayer = bot->GetSession() ? bot->GetSession()->GetMasterPlayer() : nullptr;
+    if (!masterPlayer)
+        return false;
+
+    for (PlayerMails::iterator itr = masterPlayer->GetMailBegin(); itr != masterPlayer->GetMailEnd(); ++itr)
     {
         if ((*itr)->state == MAIL_STATE_DELETED || cur_time < (*itr)->deliver_time)
             continue;
