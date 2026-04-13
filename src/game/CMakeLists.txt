@@ -66,9 +66,7 @@ set (game_SRCS
     AI/ScriptedPetAI.cpp
     AI/TotemAI.cpp
     Anticheat/Anticheat.cpp
-    AuctionHouse/AuctionHouseBotMgr.cpp
     AuctionHouse/AuctionHouseMgr.cpp
-    AuctionHouseBot/AuctionHouseBot.cpp
     Battlegrounds/BattleGround.cpp
     Battlegrounds/BattleGroundAB.cpp
     Battlegrounds/BattleGroundAV.cpp
@@ -319,9 +317,7 @@ set (game_SRCS
     Anticheat/WardenAnticheat/WardenScanMgr.hpp
     Anticheat/WardenAnticheat/WardenWin.cpp
     Anticheat/WardenAnticheat/WardenWin.hpp
-    AuctionHouse/AuctionHouseBotMgr.h
     AuctionHouse/AuctionHouseMgr.h
-    AuctionHouseBot/AuctionHouseBot.h
     Battlegrounds/BattleGround.h
     Battlegrounds/BattleGroundAB.h
     Battlegrounds/BattleGroundAV.h
@@ -531,7 +527,6 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/AI
   ${CMAKE_CURRENT_SOURCE_DIR}/Anticheat
   ${CMAKE_CURRENT_SOURCE_DIR}/AuctionHouse
-  ${CMAKE_CURRENT_SOURCE_DIR}/AuctionHouseBot
   ${CMAKE_CURRENT_SOURCE_DIR}/Battlegrounds
   ${CMAKE_CURRENT_SOURCE_DIR}/Chat
   ${CMAKE_CURRENT_SOURCE_DIR}/Commands

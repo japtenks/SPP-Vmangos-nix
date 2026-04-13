@@ -36,6 +36,7 @@
 #include "Mail.h"
 #include "TransactionLog.h"
 #include "Policies/SingletonImp.h"
+#include "PlayerBots/ahbot/AhBotEconomy.h"
 
 INSTANTIATE_SINGLETON_1(AuctionHouseMgr);
 
@@ -224,6 +225,7 @@ void AuctionHouseMgr::SendAuctionSuccessfulMail(AuctionEntry* auction)
         sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "AuctionSuccessful body string : %s", auctionSuccessfulBody.str().c_str());
 
         uint32 profit = auction->bid + auction->deposit - auctionCut;
+        profit = sAhBotEconomy.ApplySellerPayout(auction, profit);
 
         if (owner)
         {
@@ -240,6 +242,9 @@ void AuctionHouseMgr::SendAuctionSuccessfulMail(AuctionEntry* auction)
 // does not clear ram
 void AuctionHouseMgr::SendAuctionExpiredMail(AuctionEntry* auction)
 {
+    if (sAhBotEconomy.HandleExpiredAuction(auction))
+        return;
+
     // return an item in auction to its owner by mail
     Item *pItem = GetAItem(auction->itemGuidLow);
     if (!pItem)
@@ -645,6 +650,8 @@ void AuctionHouseObject::Update()
             // Or perform the transaction
             else
             {
+                sAhBotEconomy.FinalizeBuyerPayment(entry);
+
                 PlayerTransactionData data;
                 data.type = "Bid";
                 data.parts[0].lowGuid = entry->owner;

@@ -1,6 +1,8 @@
 DROP TABLE IF EXISTS `ahbot_history`;
 DROP TABLE IF EXISTS `ahbot_category`;
 DROP TABLE IF EXISTS `ahbot_price`;
+DROP TABLE IF EXISTS `ahbot_market_state`;
+DROP TABLE IF EXISTS `ahbot_auction`;
 
 CREATE TABLE `ahbot_history` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -34,6 +36,24 @@ CREATE TABLE `ahbot_price` (
   `auction_house` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `ahbot_price_item` (`item`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `ahbot_market_state` (
+  `market_id` bigint(20) unsigned NOT NULL,
+  `treasury` bigint(20) NOT NULL DEFAULT '0',
+  `updated_at` bigint(20) unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`market_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `ahbot_auction` (
+  `auction_id` bigint(20) unsigned NOT NULL,
+  `market_id` bigint(20) unsigned NOT NULL DEFAULT '0',
+  `seller_guid` bigint(20) unsigned NOT NULL DEFAULT '0',
+  `retention_pct` bigint(20) unsigned NOT NULL DEFAULT '30',
+  `flags` bigint(20) unsigned NOT NULL DEFAULT '0',
+  `created_at` bigint(20) unsigned NOT NULL DEFAULT '0',
+  PRIMARY KEY (`auction_id`),
+  KEY `idx_ahbot_auction_market` (`market_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 create index idx_ahbot_history_item on ahbot_history(item);

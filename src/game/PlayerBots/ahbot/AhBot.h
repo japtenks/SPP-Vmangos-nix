@@ -31,7 +31,6 @@ namespace ahbot
         }
 
     public:
-        static bool HandleAhBotCommand(ChatHandler* handler, char const* args);
         ObjectGuid GetAHBplayerGUID();
         void Init();
         void Update();
@@ -49,6 +48,7 @@ namespace ahbot
         int32 GetBuyPrice(const ItemPrototype* proto);
         double GetRarityPriceMultiplier(const ItemPrototype* proto);
         bool IsUsedBySkill(const ItemPrototype* proto, uint32 skillId);
+        uint32 SelectRandomBidder(uint32 auctionHouse) { return GetRandomBidder(auctionHouse); }
 
     private:
         int Answer(int auction, Category* category, ItemBag* inAuctionItems);
@@ -97,4 +97,3 @@ namespace ahbot
 };
 
 #define auctionbot MaNGOS::Singleton<ahbot::AhBot>::Instance()
-

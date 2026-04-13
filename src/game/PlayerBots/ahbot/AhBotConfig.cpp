@@ -2,6 +2,7 @@
 #include "AhBotConfig.h"
 #include "SystemConfig.h"
 #include "Log.h"
+#include <algorithm>
 std::vector<std::string> split(const std::string &s, char delim);
 
 INSTANTIATE_SINGLETON_1(AhBotConfig);
@@ -53,6 +54,21 @@ bool AhBotConfig::Initialize()
     stackReducePrice = config.GetIntDefault("AhBot.StackReducePrice", 1000000);
     priceQualityMultiplier = config.GetFloatDefault("AhBot.PriceQualityMultiplier", 1.0f);
     underPriceProbability = config.GetFloatDefault("AhBot.UnderPriceProbability", 0.05f);
+    std::string modeName = config.GetStringDefault("AhBot.Type", "inventory");
+    mode = modeName == "synthetic" ? AhBotMode::Synthetic : AhBotMode::Inventory;
+    backfillEnabled = config.GetBoolDefault("AhBot.Backfill.Enabled", true);
+    progressionMode = AhBotProgressionMode::PhaseWorld;
+    phase = std::min<uint8>(5, std::max<int32>(0, config.GetIntDefault("AhBot.Phase", 0)));
+    phaseOverrideEnabled = config.GetBoolDefault("AhBot.PhaseOverride.Enabled", false);
+    phaseOverrideSupplyMode = config.GetStringDefault("AhBot.PhaseOverride.SupplyMode", "low_supply_high_price");
+    phaseOverridePriceMode = config.GetStringDefault("AhBot.PhaseOverride.PriceMode", "scarcity_progression");
+    phaseOverrideTargetBaseline = config.GetStringDefault("AhBot.PhaseOverride.TargetBaseline", "bracket_baseline");
+    botSaleRetentionPct = std::min<uint8>(100, std::max<int32>(0, config.GetIntDefault("AhBot.BotSaleRetentionPct", 30)));
+    allianceMarketEnabled = config.GetBoolDefault("AhBot.Market.Alliance.Enabled", true);
+    hordeMarketEnabled = config.GetBoolDefault("AhBot.Market.Horde.Enabled", true);
+    neutralMarketMode = config.GetStringDefault("AhBot.Market.Neutral.Mode", "separate");
+    neutralMarketEnabled = neutralMarketMode == "separate";
+    buyMode = config.GetStringDefault("AhBot.BuyMode", "market_value");
     LoadSet<std::set<uint32> >(config.GetStringDefault("AhBot.IgnoreItemIds", "49283,52200,8494,6345,6891,2460,37164,34835"), ignoreItemIds);
     LoadSet<std::set<uint32> >(config.GetStringDefault("AhBot.IgnoreVendorItemIds", "755,858,4592,4593,1710,3827,2455,3385"), ignoreVendorItemIds);
     sendmail = config.GetBoolDefault("AhBot.SendMail", true);

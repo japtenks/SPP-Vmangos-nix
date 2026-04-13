@@ -5,6 +5,7 @@
 namespace ahbot
 {
     class Category;
+    struct PostingPlan;
 
     class PricingStrategy
     {
@@ -13,7 +14,7 @@ namespace ahbot
         virtual ~PricingStrategy() {}
 
     public:
-        virtual uint32 GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket = false, std::ostringstream *explain = NULL);
+        virtual uint32 GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket = false, std::ostringstream *explain = NULL, PostingPlan* postingPlan = nullptr);
         virtual uint32 GetBuyPrice(ItemPrototype const* proto, uint32 auctionHouse, std::ostringstream *explain = NULL);
         double GetMarketPrice(uint32 itemId, uint32 auctionHouse);
         virtual double GetRarityPriceMultiplier(uint32 itemId);
@@ -40,7 +41,7 @@ namespace ahbot
 
     public:
         virtual uint32 GetBuyPrice(ItemPrototype const* proto, uint32 auctionHouse, std::ostringstream *explain = NULL) override;
-        virtual uint32 GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket = false, std::ostringstream *explain = NULL) override;
+        virtual uint32 GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket = false, std::ostringstream *explain = NULL, PostingPlan* postingPlan = nullptr) override;
     };
 
     class PricingStrategyFactory

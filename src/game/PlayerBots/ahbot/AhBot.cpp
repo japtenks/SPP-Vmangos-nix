@@ -6,6 +6,7 @@
 #include "Config/Config.h"
 #include "Chat.h"
 #include "AhBotConfig.h"
+#include "AhBotEconomy.h"
 #include "AuctionHouse/AuctionHouseMgr.h"
 #include "WorldSession.h"
 #include "Player.h"
@@ -15,6 +16,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "AccountMgr.h"
 #include "playerbot/playerbot.h"
+#include "Bag.h"
 #include "Mail.h"
 #include "Util.h"
 
@@ -24,9 +26,64 @@
 
 using namespace ahbot;
 
-bool AhBot::HandleAhBotCommand(ChatHandler* handler, char const* args)
+namespace
 {
-    auctionbot.HandleCommand(args);
+    Item* LoadStoredInventoryItem(uint32 sellerGuid, uint32 itemGuid)
+    {
+        std::unique_ptr<QueryResult> result(CharacterDatabase.PQuery(
+            "SELECT `creator_guid`, `gift_creator_guid`, `count`, `duration`, `charges`, `flags`, `enchantments`, "
+            "`random_property_id`, `durability`, `text`, `item_instance`.`guid`, `item_instance`.`item_id` "
+            "FROM `character_inventory` "
+            "INNER JOIN `item_instance` ON `character_inventory`.`item_guid` = `item_instance`.`guid` "
+            "WHERE `character_inventory`.`guid` = '%u' AND `character_inventory`.`item_guid` = '%u'",
+            sellerGuid, itemGuid));
+        if (!result)
+            return nullptr;
+
+        Field* fields = result->Fetch();
+        uint32 entry = fields[11].GetUInt32();
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(entry);
+        if (!proto)
+            return nullptr;
+
+        Item* item = NewItemOrBag(proto);
+        if (!item->LoadFromDB(itemGuid, ObjectGuid(HIGHGUID_PLAYER, sellerGuid), fields, entry))
+        {
+            delete item;
+            return nullptr;
+        }
+
+        return item;
+    }
+
+    Item* ClaimInventoryAuctionItem(InventoryCandidate const& candidate)
+    {
+        if (!candidate.sellerGuid || !candidate.itemGuid)
+            return nullptr;
+
+        if (Player* owner = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, candidate.sellerGuid)))
+        {
+            Item* item = owner->GetItemByGuid(ObjectGuid(HIGHGUID_ITEM, candidate.itemGuid));
+            if (!item)
+                return nullptr;
+
+            owner->MoveItemFromInventory(item->GetBagSlot(), item->GetSlot(), true);
+            item->DeleteFromInventoryDB();
+            return item;
+        }
+
+        Item* item = LoadStoredInventoryItem(candidate.sellerGuid, candidate.itemGuid);
+        if (!item)
+            return nullptr;
+
+        item->DeleteFromInventoryDB();
+        return item;
+    }
+}
+
+bool ChatHandler::HandleAHBotCommand(char* args)
+{
+    auctionbot.HandleCommand(args ? args : "");
     return true;
 }
 
@@ -50,6 +107,7 @@ void AhBot::Init()
     factions[7] = 3;
 
     availableItems.Init();
+    sAhBotEconomy.Initialize();
 
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "AhBot configuration loaded");
 }
@@ -511,7 +569,12 @@ int AhBot::AddAuctions(int auction, Category* category, ItemBag* inAuctionItems)
 
 int AhBot::AddAuction(int auction, Category* category, ItemPrototype const* proto)
 {
-    uint32 owner = GetRandomBidder(auctionIds[auction]);
+    PostingPlan plan;
+    uint32 price = category->GetPricingStrategy()->GetSellPrice(proto, auctionIds[auction], false, nullptr, &plan);
+    if (!plan.allowed)
+        return 0;
+
+    uint32 owner = plan.sellerGuid;
     if (!owner)
     {
         sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "No bidders for auction %d", auctionIds[auction]);
@@ -523,22 +586,14 @@ int AhBot::AddAuction(int auction, Category* category, ItemPrototype const* prot
         return 0;
 
 
-    uint32 price = category->GetPricingStrategy()->GetSellPrice(proto, auctionIds[auction]);
-
     sLog.Out(LOG_BASIC, LOG_LVL_DETAIL,  "AddAuction: market price adjust");
     updateMarketPrice(proto->ItemId, price, auctionIds[auction]);
 
     price = category->GetPricingStrategy()->GetSellPrice(proto, auctionIds[auction]);
 
-    uint32 stackCount = urand(1, category->GetStackCount(proto));
+    uint32 stackCount = plan.stackCount;
     if (!price || !stackCount)
         return 0;
-
-    if (price > sAhBotConfig.stackReducePrice)
-        stackCount /= (price / sAhBotConfig.stackReducePrice);
-
-    if (!stackCount)
-        stackCount = 1;
 
     if (urand(0, 100) <= sAhBotConfig.underPriceProbability * 100)
         price = price * 100 / urand(100, 200);
@@ -546,13 +601,29 @@ int AhBot::AddAuction(int auction, Category* category, ItemPrototype const* prot
     uint32 bidPrice = PricingStrategy::RoundPrice(stackCount * price);
     uint32 buyoutPrice = PricingStrategy::RoundPrice(stackCount * urand(price, 4 * price / 3));
 
-    Item* item = Item::CreateItem(proto->ItemId, stackCount);
-    if (!item)
-        return 0;
+    Item* item = nullptr;
+    if (plan.flags & AuctionFlagRealInventory)
+    {
+        item = ClaimInventoryAuctionItem(plan.inventory);
+        if (!item)
+        {
+            sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AhBot could not claim inventory item %u from seller %u for auction house %u",
+                plan.inventory.itemGuid, plan.inventory.sellerGuid, auctionIds[auction]);
+            return 0;
+        }
 
-    uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(proto->ItemId);
-    if (randomPropertyId)
-        item->SetItemRandomProperties(randomPropertyId);
+        stackCount = item->GetCount();
+    }
+    else
+    {
+        item = Item::CreateItem(proto->ItemId, stackCount);
+        if (!item)
+            return 0;
+
+        uint32 randomPropertyId = Item::GenerateItemRandomPropertyId(proto->ItemId);
+        if (randomPropertyId)
+            item->SetItemRandomProperties(randomPropertyId);
+    }
 
     AuctionHouseEntry const* ahEntry = sAuctionHouseStore.LookupEntry(auctionIds[auction]);
     if (!ahEntry)
@@ -585,6 +656,7 @@ int AhBot::AddAuction(int auction, Category* category, ItemPrototype const* prot
 
     item->SaveToDB();
     auctionEntry->SaveToDB();
+    sAhBotEconomy.SaveAuctionMetadata(auctionEntry, plan);
 
     sLog.Out(LOG_BASIC, LOG_LVL_DETAIL,  "AhBot %d added %d of %s to auction %d for %d..%d", owner, stackCount, proto->Name1, auctionIds[auction], bidPrice, buyoutPrice);
     return 1;

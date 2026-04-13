@@ -2,6 +2,17 @@
 
 #include "Config/Config.h"
 
+enum class AhBotMode
+{
+    Synthetic,
+    Inventory
+};
+
+enum class AhBotProgressionMode
+{
+    PhaseWorld
+};
+
 class AhBotConfig
 {
 public:
@@ -26,6 +37,20 @@ public:
     uint32 defaultMinPrice, stackReducePrice;
     uint32 maxItemLevel, maxRequiredLevel;
     float underPriceProbability;
+    AhBotMode mode;
+    bool backfillEnabled;
+    AhBotProgressionMode progressionMode;
+    uint8 phase;
+    bool phaseOverrideEnabled;
+    std::string phaseOverrideSupplyMode;
+    std::string phaseOverridePriceMode;
+    std::string phaseOverrideTargetBaseline;
+    uint8 botSaleRetentionPct;
+    bool allianceMarketEnabled;
+    bool hordeMarketEnabled;
+    bool neutralMarketEnabled;
+    std::string neutralMarketMode;
+    std::string buyMode;
     std::set<uint32> ignoreItemIds;
     std::set<uint32> ignoreVendorItemIds;
     bool sendmail;
@@ -97,4 +122,3 @@ private:
 };
 
 #define sAhBotConfig MaNGOS::Singleton<AhBotConfig>::Instance()
-

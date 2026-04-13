@@ -2,6 +2,7 @@
 #include "Category.h"
 #include "ItemBag.h"
 #include "AhBotConfig.h"
+#include "AhBotEconomy.h"
 #include "Database/DatabaseEnv.h"
 #include "playerbot/RandomItemMgr.h"
 #include "ahbot/AhBot.h"
@@ -34,8 +35,18 @@ double PricingStrategy::CalculatePrice(std::ostringstream *explain, ...)
     return result;
 }
 
-uint32 PricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket, std::ostringstream *explain)
+uint32 PricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket, std::ostringstream *explain, PostingPlan* postingPlan)
 {
+    PostingPlan plan = sAhBotEconomy.BuildPostingPlan(auctionHouse, category, proto, category->GetStackCount(proto), auctionbot.SelectRandomBidder(auctionHouse));
+    if (postingPlan)
+        *postingPlan = plan;
+
+    if (!plan.allowed)
+    {
+        if (explain) *explain << "locked";
+        return 0;
+    }
+
     double marketPrice = GetMarketPrice(proto->ItemId, auctionHouse);
 
     if (!ignoreMarket && marketPrice > 0)
@@ -68,6 +79,7 @@ uint32 PricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionH
             (double)sAhBotConfig.priceMultiplier,
             NULL);
 
+    price *= plan.priceMultiplier;
     return RoundPrice(price);
 }
 
@@ -226,9 +238,9 @@ uint32 BuyOnlyRarePricingStrategy::GetBuyPrice(ItemPrototype const* proto, uint3
     return PricingStrategy::GetBuyPrice(proto, auctionHouse, explain);
 }
 
-uint32 BuyOnlyRarePricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket, std::ostringstream *explain)
+uint32 BuyOnlyRarePricingStrategy::GetSellPrice(ItemPrototype const* proto, uint32 auctionHouse, bool ignoreMarket, std::ostringstream *explain, PostingPlan* postingPlan)
 {
-    return PricingStrategy::GetSellPrice(proto, auctionHouse, ignoreMarket, explain);
+    return PricingStrategy::GetSellPrice(proto, auctionHouse, ignoreMarket, explain, postingPlan);
 }
 
 uint32 PricingStrategy::RoundPrice(double price)

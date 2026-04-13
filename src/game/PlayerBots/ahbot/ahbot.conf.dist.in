@@ -10,12 +10,21 @@ ConfVersion=2019051400
 #
 ###################################################################################################################
 
-# Disable original AuctionHouseBot
-AuctionHouseBot.Seller.Enabled = 0
-AuctionHouseBot.Buyer.Enabled = 0
-
-# Replace with the new AhBot
+# AhBot runtime
 AhBot.Enabled = 1
+AhBot.Type = inventory
+AhBot.Backfill.Enabled = 1
+AhBot.ProgressionMode = phase_world
+AhBot.Phase = 0
+AhBot.PhaseOverride.Enabled = 0
+AhBot.PhaseOverride.SupplyMode = low_supply_high_price
+AhBot.PhaseOverride.PriceMode = scarcity_progression
+AhBot.PhaseOverride.TargetBaseline = bracket_baseline
+AhBot.BotSaleRetentionPct = 30
+AhBot.Market.Alliance.Enabled = 1
+AhBot.Market.Horde.Enabled = 1
+AhBot.Market.Neutral.Mode = separate
+AhBot.BuyMode = market_value
 
 AhBot.MaxItemLevel = 500
 AhBot.MaxRequiredLevel = 80
@@ -179,4 +188,3 @@ AhBot.MaxAuctionCount.trade.engineering.blue = 4
 AhBot.MaxAuctionCount.trade.enchanting.white = 40
 AhBot.MaxAuctionCount.trade.enchanting.green = 20
 AhBot.MaxAuctionCount.trade.enchanting.blue = 20
-
