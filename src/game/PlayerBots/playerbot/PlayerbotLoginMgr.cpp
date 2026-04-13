@@ -304,7 +304,7 @@ bool PlayerLoginInfo::LoginBot()
         return false;
     }
 
-    sRandomPlayerbotMgr.HandlePlayerBotLoginCallback(nullptr, holder);
+    sRandomPlayerbotMgr.ProcessPlayerBotLoginHolder(holder);
     holder = nullptr;
     holderState = HolderState::HOLDER_EMPTY;
 
@@ -668,7 +668,7 @@ BotInfos PlayerBotLoginMgr::FillLoginLogoutQueue(BotPool* pool, const RealPlayer
             queue.push_back(info);
             logins++;
 
-            if (logins >= sPlayerbotAIConfig.randomBotsMaxLoginsPerInterval)
+            if (logins >= sRandomPlayerbotMgr.GetMaxLoginsPerInterval())
                 break;
         }
 

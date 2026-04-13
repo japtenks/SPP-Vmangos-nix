@@ -159,6 +159,15 @@ void PlayerbotHolder::UpdateAIInternal(uint32 elapsed, bool minimal)
 
 void PlayerbotHolder::UpdateSessions(uint32 elapsed)
 {
+    std::vector<SqlQueryHolder*> pendingLoginHolders;
+    {
+        std::lock_guard<std::mutex> lock(m_pendingLoginHoldersMutex);
+        pendingLoginHolders.swap(m_pendingLoginHolders);
+    }
+
+    for (SqlQueryHolder* holder : pendingLoginHolders)
+        ProcessPlayerBotLoginHolder(holder);
+
     ForEachPlayerbot([&](Player* bot)
     {
         if (bot->GetPlayerbotAI() && bot->IsBeingTeleported())
@@ -2197,6 +2206,15 @@ void PlayerbotHolder::AddPlayerBot(uint32 playerGuid, uint32 masterAccountId)
 }
 
 void PlayerbotHolder::HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> /*dummy*/, SqlQueryHolder* holder)
+{
+    if (!holder)
+        return;
+
+    std::lock_guard<std::mutex> lock(m_pendingLoginHoldersMutex);
+    m_pendingLoginHolders.push_back(holder);
+}
+
+void PlayerbotHolder::ProcessPlayerBotLoginHolder(SqlQueryHolder* holder)
 {
     if (!holder)
         return;

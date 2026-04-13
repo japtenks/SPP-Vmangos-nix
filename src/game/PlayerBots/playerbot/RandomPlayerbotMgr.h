@@ -110,6 +110,7 @@ public:
         void PrintStats(uint32 requesterGuid);
         double GetBuyMultiplier(Player* bot);
         double GetSellMultiplier(Player* bot);
+        uint32 GetMaxLoginsPerInterval() const;
         void AddTradeDiscount(Player* bot, Player* master, int32 value);
         void SetTradeDiscount(Player* bot, Player* master, uint32 value);
         uint32 GetTradeDiscount(Player* bot, Player* master);

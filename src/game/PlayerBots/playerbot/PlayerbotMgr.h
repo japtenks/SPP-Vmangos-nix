@@ -6,7 +6,9 @@
 #include "ObjectGuid.h"
 #include "Database/DatabaseEnv.h"
 #include "SharedDefines.h"
+#include <mutex>
 #include <shared_mutex>
+#include <vector>
 
 
 class WorldPacket;
@@ -26,6 +28,7 @@ public:
 
     void AddPlayerBot(uint32 guid, uint32 masterAccountId);
 	void HandlePlayerBotLoginCallback(std::unique_ptr<QueryResult> dummy, SqlQueryHolder* holder);
+    void ProcessPlayerBotLoginHolder(SqlQueryHolder* holder);
 
     void LogoutPlayerBot(uint32 guid);
     void DisablePlayerBot(uint32 guid, bool logOutPlayer = true);
@@ -101,11 +104,13 @@ private:
     std::string HandleBotRefresh(Player* bot, Player* master, const std::string param);
     std::string HandleBotRandom(Player* bot, Player* master, const std::string param);
 
-    PlayerBotMap playerBots;
-    mutable std::shared_mutex m_playerBotsMutex; // Protects playerBots for cross-thread iteration
-    std::map<std::string, HolderCommandHandler> m_holderHandlers;
-    std::map<std::string, BotCommandHandler> m_botCommandHandlers;
-    ObjectGuid m_spoofGuid;
+	    PlayerBotMap playerBots;
+	    mutable std::shared_mutex m_playerBotsMutex; // Protects playerBots for cross-thread iteration
+        std::mutex m_pendingLoginHoldersMutex;
+        std::vector<SqlQueryHolder*> m_pendingLoginHolders;
+	    std::map<std::string, HolderCommandHandler> m_holderHandlers;
+	    std::map<std::string, BotCommandHandler> m_botCommandHandlers;
+	    ObjectGuid m_spoofGuid;
 };
 
 class PlayerbotMgr : public PlayerbotHolder
