@@ -22245,6 +22245,12 @@ void Player::AddCooldown(SpellEntry const& spellEntry, ItemPrototype const* item
         auto& cdData = cdDataItr->second;
         if (!cdData->IsPermanent() && (!cdData->IsSpellCDExpired(sWorld.GetCurrentClockTime()) || !cdData->IsCatCDExpired(sWorld.GetCurrentClockTime())))
         {
+            // Playerbots can legitimately re-issue auto-repeat ranged and stance spells while the
+            // previous cooldown entry is still active. Ignore these duplicate re-adds instead of
+            // spamming the log every tick.
+            if (spellEntry.IsAutoRepeatRangedSpell() || spellEntry.Id == 2457 || spellEntry.Id == 71 || spellEntry.Id == 2458)
+                return;
+
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Player::AddCooldown> Spell(%u) try to add and already existing cooldown?", spellEntry.Id);
             return;
         }
