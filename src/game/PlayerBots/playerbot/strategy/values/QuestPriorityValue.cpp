@@ -122,6 +122,10 @@ float QuestPriorityValue::ScoreChain(uint32 questId) const
     if (quest->GetNextQuestId())
         score += 10.0f;
 
+    const int32 prevQuestId = std::abs(quest->GetPrevQuestId());
+    if (prevQuestId && (bot->GetQuestRewardStatus(prevQuestId) || bot->GetQuestStatus(prevQuestId) == QUEST_STATUS_COMPLETE))
+        score += 8.0f;
+
     return score;
 }
 
@@ -159,10 +163,14 @@ float QuestPriorityValue::ScoreLevel(uint32 questId) const
     return 0.0f;
 }
 
-float QuestPriorityValue::ScoreAge(uint32 /*questId*/) const
+float QuestPriorityValue::ScoreAge(uint32 questId) const
 {
-    // We do not persist quest accept timestamps yet.
-    return 0.0f;
+    PlayerbotAI* ai = bot->GetPlayerbotAI();
+    if (!ai)
+        return 0.0f;
+
+    const float ageHours = float(ai->GetQuestLogAgeSeconds(questId)) / 3600.0f;
+    return std::min(10.0f, ageHours * 1.5f);
 }
 
 float QuestPriorityValue::ScoreGroup(uint32 questId) const

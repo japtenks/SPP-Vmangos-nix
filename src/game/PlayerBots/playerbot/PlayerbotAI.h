@@ -691,6 +691,12 @@ public:
     const CommittedTask& GetCommittedTask() const { return committedTask; }
     void ClearCommittedTask() { committedTask.Clear(); }
 
+    time_t GetQuestLogTimestamp(uint32 questId) const;
+    uint32 GetQuestLogAgeSeconds(uint32 questId, time_t now = 0) const;
+    void MarkQuestInLog(uint32 questId, time_t acceptedAt = 0);
+    void ForgetQuestInLog(uint32 questId);
+    void SyncQuestLogState(time_t now = 0);
+
     std::vector<std::pair<std::string, std::string>> SaveFrameworkState() const;
     void LoadFrameworkState(const std::unordered_map<std::string, std::string>& values);
     void NormalizeFrameworkState();
@@ -742,6 +748,7 @@ protected:
     ArchetypeWeights archetypeWeights = {};
     BotSession botSession = {};
     CommittedTask committedTask = {};
+    std::unordered_map<uint32, time_t> questLogTimestamps = {};
     bool m_recordMessages = false;
     std::vector<std::string> m_recordedMessages;
     Event lastEvent;

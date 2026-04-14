@@ -51,6 +51,7 @@ void PlayerbotDbStore::Save(PlayerbotAI *ai, std::string preset)
     uint64 guid = ai->GetBot()->GetObjectGuid().GetRawValue();
 
     Reset(ai, preset);
+    ai->SyncQuestLogState();
 
     std::list<std::string> data = ai->GetAiObjectContext()->Save();
     for (std::list<std::string>::iterator i = data.begin(); i != data.end(); ++i)

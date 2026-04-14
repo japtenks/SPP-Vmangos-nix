@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <iomanip>
 #include <random>
+#include <sstream>
+#include <unordered_set>
 
 #include "playerbot/AiFactory.h"
 
@@ -71,6 +73,65 @@ std::set<std::string> PlayerbotAI::unsecuredCommands;
 
 namespace
 {
+    std::string SerializeQuestLogTimestamps(std::unordered_map<uint32, time_t> const& timestamps)
+    {
+        if (timestamps.empty())
+            return "";
+
+        std::vector<std::pair<uint32, uint32>> entries;
+        entries.reserve(timestamps.size());
+        for (const auto& [questId, acceptedAt] : timestamps)
+        {
+            if (!questId || acceptedAt <= 0)
+                continue;
+
+            entries.push_back({ questId, static_cast<uint32>(acceptedAt) });
+        }
+
+        std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) { return left.first < right.first; });
+
+        std::ostringstream out;
+        for (const auto& [questId, acceptedAt] : entries)
+        {
+            if (out.tellp() > 0)
+                out << ",";
+
+            out << questId << ":" << acceptedAt;
+        }
+
+        return out.str();
+    }
+
+    std::unordered_map<uint32, time_t> DeserializeQuestLogTimestamps(std::string const& value)
+    {
+        std::unordered_map<uint32, time_t> timestamps;
+        std::istringstream stream(value);
+        std::string token;
+        while (std::getline(stream, token, ','))
+        {
+            if (token.empty())
+                continue;
+
+            const size_t separator = token.find(':');
+            if (separator == std::string::npos)
+                continue;
+
+            const std::string questIdToken = token.substr(0, separator);
+            const std::string timestampToken = token.substr(separator + 1);
+            if (!Qualified::isValidNumberString(questIdToken) || !Qualified::isValidNumberString(timestampToken))
+                continue;
+
+            const uint32 questId = std::stoul(questIdToken);
+            const uint32 acceptedAt = std::stoul(timestampToken);
+            if (!questId || !acceptedAt)
+                continue;
+
+            timestamps[questId] = static_cast<time_t>(acceptedAt);
+        }
+
+        return timestamps;
+    }
+
     uint32 ParseUint32OrDefault(const std::unordered_map<std::string, std::string>& values, const std::string& key, uint32 defaultValue = 0)
     {
         auto itr = values.find(key);
@@ -292,6 +353,74 @@ void PlayerbotAI::ApplyArchetype(BotArchetype newArchetype, const ArchetypeWeigh
     archetypeWeights = weights;
 }
 
+time_t PlayerbotAI::GetQuestLogTimestamp(uint32 questId) const
+{
+    auto itr = questLogTimestamps.find(questId);
+    return itr != questLogTimestamps.end() ? itr->second : 0;
+}
+
+uint32 PlayerbotAI::GetQuestLogAgeSeconds(uint32 questId, time_t now) const
+{
+    const time_t acceptedAt = GetQuestLogTimestamp(questId);
+    if (!acceptedAt)
+        return 0;
+
+    if (!now)
+        now = time(nullptr);
+
+    if (acceptedAt >= now)
+        return 0;
+
+    return static_cast<uint32>(now - acceptedAt);
+}
+
+void PlayerbotAI::MarkQuestInLog(uint32 questId, time_t acceptedAt)
+{
+    if (!questId)
+        return;
+
+    if (!acceptedAt)
+        acceptedAt = time(nullptr);
+
+    auto itr = questLogTimestamps.find(questId);
+    if (itr == questLogTimestamps.end() || !itr->second || acceptedAt < itr->second)
+        questLogTimestamps[questId] = acceptedAt;
+}
+
+void PlayerbotAI::ForgetQuestInLog(uint32 questId)
+{
+    questLogTimestamps.erase(questId);
+}
+
+void PlayerbotAI::SyncQuestLogState(time_t now)
+{
+    if (!now)
+        now = time(nullptr);
+
+    std::unordered_set<uint32> activeQuestIds;
+    for (uint16 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 questId = bot->GetUInt32Value(PLAYER_QUEST_LOG_1_1 + slot * MAX_QUEST_OFFSET + QUEST_ID_OFFSET);
+        if (!questId)
+            continue;
+
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
+        activeQuestIds.insert(questId);
+        MarkQuestInLog(questId, now);
+    }
+
+    for (auto itr = questLogTimestamps.begin(); itr != questLogTimestamps.end();)
+    {
+        if (activeQuestIds.find(itr->first) == activeQuestIds.end() || bot->GetQuestRewardStatus(itr->first))
+            itr = questLogTimestamps.erase(itr);
+        else
+            ++itr;
+    }
+}
+
 std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState() const
 {
     return {
@@ -310,7 +439,8 @@ std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState
         {"framework.committed_fail_cooldown", std::to_string(static_cast<uint32>(committedTask.failCooldownUntil))},
         {"framework.committed_retry", std::to_string(committedTask.retryCount)},
         {"framework.committed_validity_check", std::to_string(static_cast<uint32>(committedTask.lastValidityCheck))},
-        {"framework.committed_valid", committedTask.isValid ? "1" : "0"}
+        {"framework.committed_valid", committedTask.isValid ? "1" : "0"},
+        {"framework.quest_log_timestamps", SerializeQuestLogTimestamps(questLogTimestamps)}
     };
 }
 
@@ -342,6 +472,9 @@ void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::
     committedTask.retryCount = static_cast<uint8>(ParseUint32OrDefault(values, "framework.committed_retry", committedTask.retryCount));
     committedTask.lastValidityCheck = static_cast<time_t>(ParseUint32OrDefault(values, "framework.committed_validity_check", static_cast<uint32>(committedTask.lastValidityCheck)));
     committedTask.isValid = ParseBoolOrDefault(values, "framework.committed_valid", committedTask.isValid);
+    auto questLogItr = values.find("framework.quest_log_timestamps");
+    questLogTimestamps = questLogItr != values.end() ? DeserializeQuestLogTimestamps(questLogItr->second) : std::unordered_map<uint32, time_t>();
+    SyncQuestLogState();
     NormalizeFrameworkState();
 }
 
@@ -2963,6 +3096,7 @@ void PlayerbotAI::DropQuest(uint32 questIdToDrop)
             // getQuestStatusMap not directly accessible in vmangos
 
             //TODO should probably also remove quest items?
+            ForgetQuestInLog(questId);
 
             return;
         }

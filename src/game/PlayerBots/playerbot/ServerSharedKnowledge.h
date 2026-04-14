@@ -12,6 +12,8 @@ enum class NpcKnowledgePurpose : uint8
     TRAINER_TEACHING = 1,
     TRAINER_SKILL = 2,
     REAGENT_VENDOR_ITEM = 3,
+    QUEST_GIVER = 4,
+    QUEST_TAKER = 5,
 };
 
 struct NpcUsefulnessKnowledgeKey
@@ -61,6 +63,14 @@ public:
     void RecordReagentVendorItem(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
     float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0) const;
     float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, std::vector<uint32> const& itemIds, uint32 mapId, uint32 cityId = 0) const;
+
+    void RecordQuestGiver(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
+    float GetQuestGiverConfidence(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0) const;
+    float GetQuestGiverConfidence(uint32 npcEntry, std::vector<uint32> const& questIds, uint32 mapId, uint32 cityId = 0) const;
+
+    void RecordQuestTaker(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
+    float GetQuestTakerConfidence(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0) const;
+    float GetQuestTakerConfidence(uint32 npcEntry, std::vector<uint32> const& questIds, uint32 mapId, uint32 cityId = 0) const;
 
 private:
     struct NpcUsefulnessKnowledgeKeyHash

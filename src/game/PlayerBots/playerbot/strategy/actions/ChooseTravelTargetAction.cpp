@@ -4,6 +4,7 @@
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerSharedKnowledge.h"
+#include "playerbot/strategy/values/QuestValues.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
@@ -192,6 +193,107 @@ namespace
             return knowledgeBonus;
 
         return 0.10f * weights.curiosityWeight * explorationBias * (1.0f - (0.70f * knowledgeMaturity));
+    }
+
+    float GetQuestDestinationScore(Player* bot, TravelDestination* destination, uint32 mapId, uint32 cityId, std::vector<uint32> const& questIds)
+    {
+        if (!destination)
+            return 0.0f;
+
+        const int32 entry = destination->GetEntry();
+        if (entry <= 0 || questIds.empty())
+            return 0.0f;
+
+        float knowledge = 0.0f;
+        uint32 purpose = 0;
+        switch (destination->GetPurpose())
+        {
+            case TravelDestinationPurpose::QuestGiver:
+                purpose = static_cast<uint32>(NpcKnowledgePurpose::QUEST_GIVER);
+                knowledge = sServerSharedKnowledge.GetQuestGiverConfidence(static_cast<uint32>(entry), questIds, mapId, cityId);
+                break;
+            case TravelDestinationPurpose::QuestTaker:
+                purpose = static_cast<uint32>(NpcKnowledgePurpose::QUEST_TAKER);
+                knowledge = sServerSharedKnowledge.GetQuestTakerConfidence(static_cast<uint32>(entry), questIds, mapId, cityId);
+                break;
+            default:
+                return 0.0f;
+        }
+
+        return GetNpcPreferenceScore(bot, knowledge, purpose);
+    }
+
+    uint32 CountDestinationQuestTurnIns(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap, std::vector<uint32> const& questIds)
+    {
+        if (!bot || !destination || destination->GetPurpose() != TravelDestinationPurpose::QuestTaker)
+            return 0;
+
+        auto entryItr = relationMap.find(destination->GetEntry());
+        if (entryItr == relationMap.end())
+            return 0;
+
+        uint32 count = 0;
+        for (uint32 questId : questIds)
+        {
+            if (!questId)
+                continue;
+
+            auto relationItr = entryItr->second.find(questId);
+            if (relationItr == entryItr->second.end())
+                continue;
+
+            if (!(relationItr->second & static_cast<uint8>(TravelDestinationPurpose::QuestTaker)))
+                continue;
+
+            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+            if (quest && bot->CanRewardQuest(quest, false))
+                ++count;
+        }
+
+        return count;
+    }
+
+    float GetQuestHubBonus(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap, std::vector<uint32> const& questIds)
+    {
+        const uint32 turnInCount = CountDestinationQuestTurnIns(bot, destination, relationMap, questIds);
+        if (!turnInCount)
+            return 0.0f;
+
+        const float cappedTurnIns = std::min<float>(5.0f, static_cast<float>(turnInCount));
+        return 0.18f * cappedTurnIns;
+    }
+
+    float GetQuestFollowOnBonus(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap)
+    {
+        if (!bot || !destination || destination->GetPurpose() != TravelDestinationPurpose::QuestGiver)
+            return 0.0f;
+
+        auto entryItr = relationMap.find(destination->GetEntry());
+        if (entryItr == relationMap.end())
+            return 0.0f;
+
+        uint32 followOnCount = 0;
+        for (const auto& [questId, flags] : entryItr->second)
+        {
+            if (!(flags & static_cast<uint8>(TravelDestinationPurpose::QuestGiver)))
+                continue;
+
+            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+            if (!quest || !bot->CanTakeQuest(quest, false) || bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
+                continue;
+
+            const int32 prevQuestId = std::abs(quest->GetPrevQuestId());
+            if (!prevQuestId)
+                continue;
+
+            if (bot->GetQuestRewardStatus(prevQuestId) || bot->GetQuestStatus(prevQuestId) == QUEST_STATUS_COMPLETE)
+                ++followOnCount;
+        }
+
+        if (!followOnCount)
+            return 0.0f;
+
+        return 0.20f * std::min<float>(2.0f, static_cast<float>(followOnCount));
     }
 
     InterruptTier GetTravelTargetInterruptTier(const TravelTarget* target)
@@ -1713,6 +1815,7 @@ bool RequestNamedTravelTargetAction::isAllowed() const
 bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
+    const EntryQuestRelationMap relationMap = AI_VALUE(EntryQuestRelationMap, "entry quest relation");
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
@@ -1780,7 +1883,19 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
         }
     }
 
-    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches]()
+    std::vector<uint32> questIds;
+    questIds.reserve(destinationFetches.size());
+    for (const auto& fetch : destinationFetches)
+    {
+        const int32 questId = std::get<1>(fetch);
+        if (questId > 0)
+            questIds.push_back(static_cast<uint32>(questId));
+    }
+
+    std::sort(questIds.begin(), questIds.end());
+    questIds.erase(std::unique(questIds.begin(), questIds.end()), questIds.end());
+
+    *AI_VALUE(FutureDestinations*, "future travel destinations") = std::async(std::launch::async, [partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, questIds, relationMap, bot = bot]()
         {
             PartitionedTravelList list;
             for (auto [purpose, questId, range] : destinationFetches)
@@ -1793,6 +1908,31 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
             if (list.empty())
                 list = sTravelMgr.GetPartitions(center, partitions, travelInfo, (uint32)TravelDestinationPurpose::QuestGiver);
+
+            const uint32 mapId = bot ? bot->GetMapId() : 0;
+            const uint32 cityId = GetKnowledgeCityId(bot);
+            for (auto& [partition, points] : list)
+            {
+                std::stable_sort(points.begin(), points.end(), [&](const TravelPoint& left, const TravelPoint& right)
+                {
+                    TravelDestination* leftDestination = std::get<0>(left);
+                    TravelDestination* rightDestination = std::get<0>(right);
+
+                    const float leftScore =
+                        GetQuestDestinationScore(bot, leftDestination, mapId, cityId, questIds) +
+                        GetQuestHubBonus(bot, leftDestination, relationMap, questIds) +
+                        GetQuestFollowOnBonus(bot, leftDestination, relationMap);
+                    const float rightScore =
+                        GetQuestDestinationScore(bot, rightDestination, mapId, cityId, questIds) +
+                        GetQuestHubBonus(bot, rightDestination, relationMap, questIds) +
+                        GetQuestFollowOnBonus(bot, rightDestination, relationMap);
+
+                    if (leftScore == rightScore)
+                        return std::get<2>(left) < std::get<2>(right);
+
+                    return leftScore > rightScore;
+                });
+            }
 
             return list;
         }

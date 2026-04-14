@@ -2,9 +2,31 @@
 #include "playerbot/playerbot.h"
 #include "QuestAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/ServerSharedKnowledge.h"
 #include "playerbot/ServerFacade.h"
 
 using namespace ai;
+
+namespace
+{
+    uint32 GetKnowledgeCityId(Player* bot)
+    {
+        if (!bot)
+            return 0;
+
+        AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(sServerFacade.GetAreaId(bot));
+        while (areaEntry && areaEntry->ZoneId)
+        {
+            AreaTableEntry const* parentArea = GetAreaEntryByAreaID(areaEntry->ZoneId);
+            if (!parentArea || parentArea == areaEntry)
+                break;
+
+            areaEntry = parentArea;
+        }
+
+        return areaEntry ? areaEntry->Id : bot->GetZoneId();
+    }
+}
 
 bool QuestAction::Execute(Event& event)
 {
@@ -242,6 +264,19 @@ bool QuestAction::AcceptQuest(Player* requester, Quest const* quest, uint64 ques
 
         if (bot->GetQuestStatus(questId) != QUEST_STATUS_NONE && bot->GetQuestStatus(questId) != QUEST_STATUS_AVAILABLE)
         {
+            ai->MarkQuestInLog(questId);
+
+            ObjectGuid questGiverGuid = ObjectGuid(questGiver);
+            if (questGiverGuid.IsAnyTypeCreature())
+            {
+                sServerSharedKnowledge.RecordQuestGiver(
+                    questGiverGuid.GetEntry(),
+                    questId,
+                    bot->GetMapId(),
+                    GetKnowledgeCityId(bot),
+                    0.08f);
+            }
+
             BroadcastHelper::BroadcastQuestAccepted(ai, bot, quest);
 
             sPlayerbotAIConfig.logEvent(ai, "AcceptQuestAction", quest->GetTitle(), std::to_string(quest->GetQuestId()));

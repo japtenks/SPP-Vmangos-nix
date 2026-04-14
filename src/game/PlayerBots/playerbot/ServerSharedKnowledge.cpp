@@ -127,3 +127,33 @@ float ServerSharedKnowledge::GetReagentVendorItemConfidence(uint32 vendorEntry, 
 {
     return GetNpcUsefulnessConfidence(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM), requirement, itemIds, mapId, cityId);
 }
+
+void ServerSharedKnowledge::RecordQuestGiver(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId, float delta)
+{
+    RecordNpcUsefulness(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_GIVER), 1, questId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetQuestGiverConfidence(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_GIVER), 1, questId, mapId, cityId);
+}
+
+float ServerSharedKnowledge::GetQuestGiverConfidence(uint32 npcEntry, std::vector<uint32> const& questIds, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_GIVER), 1, questIds, mapId, cityId);
+}
+
+void ServerSharedKnowledge::RecordQuestTaker(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId, float delta)
+{
+    RecordNpcUsefulness(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_TAKER), 1, questId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetQuestTakerConfidence(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_TAKER), 1, questId, mapId, cityId);
+}
+
+float ServerSharedKnowledge::GetQuestTakerConfidence(uint32 npcEntry, std::vector<uint32> const& questIds, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_TAKER), 1, questIds, mapId, cityId);
+}

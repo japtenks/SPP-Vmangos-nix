@@ -1,12 +1,34 @@
 #include "Config/Config.h"
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ServerSharedKnowledge.h"
 #include "TalkToQuestGiverAction.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/QuestValues.h"
 #include "playerbot/strategy/values/GuildValues.h"
 
 using namespace ai;
+
+namespace
+{
+    uint32 GetKnowledgeCityId(Player* bot)
+    {
+        if (!bot)
+            return 0;
+
+        AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(sServerFacade.GetAreaId(bot));
+        while (areaEntry && areaEntry->ZoneId)
+        {
+            AreaTableEntry const* parentArea = GetAreaEntryByAreaID(areaEntry->ZoneId);
+            if (!parentArea || parentArea == areaEntry)
+                break;
+
+            areaEntry = parentArea;
+        }
+
+        return areaEntry ? areaEntry->Id : bot->GetZoneId();
+    }
+}
 
 bool TalkToQuestGiverAction::ProcessQuest(Player* requester, Quest const* quest, WorldObject* questGiver)
 {
@@ -101,6 +123,21 @@ bool TalkToQuestGiverAction::TurnInQuest(Player* requester, Quest const* quest, 
 
     if(quest->GetRewChoiceItemsCount() || quest->GetRewItemsCount())
         ai->DoSpecificAction("equip upgrades");
+
+    if (bot->GetQuestRewardStatus(questID))
+    {
+        ai->ForgetQuestInLog(questID);
+
+        if (questGiver && questGiver->GetTypeId() == TYPEID_UNIT)
+        {
+            sServerSharedKnowledge.RecordQuestTaker(
+                questGiver->GetEntry(),
+                questID,
+                bot->GetMapId(),
+                GetKnowledgeCityId(bot),
+                0.08f);
+        }
+    }
 
     return true;
 }
