@@ -12,6 +12,7 @@
 #include "Database/DatabaseEnv.h"
 #include "PlayerbotAI.h"
 #include "Player.h"
+#include "Bag.h"
 #include "playerbot/AiFactory.h"
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
