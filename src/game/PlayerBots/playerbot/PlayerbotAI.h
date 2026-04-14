@@ -650,7 +650,9 @@ public:
     bool IsInRaid();
 
     void SetMoveToTransport(bool flag = true) { isMovingToTransport = flag; }
-    bool GetMoveToTransport() { return isMovingToTransport; }
+    bool GetMoveToTransport() const { return isMovingToTransport; }
+    void SetRideTransport(bool flag = true) { isRidingTransport = flag; }
+    bool IsRidingTransport() const { return isRidingTransport; }
 
     void SetShouldLogOut(bool val = true) { shouldLogOut = val; }
     bool GetShouldLogOut() { return shouldLogOut; }
@@ -743,6 +745,7 @@ protected:
     uint32 faceTargetUpdateDelay;
     bool isPlayerFriend = false;
     bool isMovingToTransport = false;
+    bool isRidingTransport = false;
     bool shouldLogOut = false;
     BotArchetype archetype = BotArchetype::REGULAR;
     ArchetypeWeights archetypeWeights = {};

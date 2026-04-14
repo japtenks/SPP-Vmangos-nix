@@ -33,6 +33,7 @@
 #include "PlayerbotDbStore.h"
 #include "strategy/values/PositionValue.h"
 #include "playerbot/ServerFacade.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "playerbot/TravelMgr.h"
 #include "MoveSplineInitArgs.h"
 #include "InstanceData.h"
@@ -955,20 +956,32 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     {
         bot->StopMoving();
         if (master->GetTransport() && WorldPosition(bot).isOnTransport(master->GetTransport()))
+        {
             master->GetTransport()->AddPassenger(bot);
+            isMovingToTransport = false;
+            isRidingTransport = true;
+        }
         else if (bot->GetTransport())
         {
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
+            isMovingToTransport = false;
+            isRidingTransport = false;
         }
     }
-    else if (isMovingToTransport && (!bot->GetTransport() || bot->IsBeingTeleported()))
+    else if (isMovingToTransport && bot->GetTransport() && WorldPosition(bot).isOnTransport(bot->GetTransport()))
     {
         isMovingToTransport = false;
+        isRidingTransport = true;
     }
-    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport)
+    else if ((isMovingToTransport || isRidingTransport) && (!bot->GetTransport() || bot->IsBeingTeleported()))
+    {
+        isMovingToTransport = false;
+        isRidingTransport = false;
+    }
+    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport && !isRidingTransport)
     {
         if (HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
         {
@@ -1475,6 +1488,29 @@ void PlayerbotAI::OnDeath()
                 out << "\"," << std::to_string(adds);
 
                 sPlayerbotAIConfig.log("deaths.csv", out.str().c_str());
+            }
+        }
+
+        Unit* hostilePlayer = AI_VALUE(Unit*, "enemy player target");
+        if (!hostilePlayer)
+            hostilePlayer = AI_VALUE(Unit*, "current target");
+
+        if (hostilePlayer && hostilePlayer->IsPlayer() && hostilePlayer != bot)
+        {
+            Player* enemyPlayer = static_cast<Player*>(hostilePlayer);
+            sServerSocialMgr.AddHostility(
+                bot->GetObjectGuid().GetRawValue(),
+                enemyPlayer->GetObjectGuid().GetRawValue(),
+                0.20f,
+                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+
+            if (enemyPlayer->GetPlayerbotAI())
+            {
+                sServerSocialMgr.AddHostility(
+                    enemyPlayer->GetObjectGuid().GetRawValue(),
+                    bot->GetObjectGuid().GetRawValue(),
+                    0.08f,
+                    SOCIAL_RELATIONSHIP_RIVAL);
             }
         }
 

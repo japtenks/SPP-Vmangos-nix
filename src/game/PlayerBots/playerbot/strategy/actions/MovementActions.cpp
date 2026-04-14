@@ -20,6 +20,41 @@
 
 using namespace ai;
 
+namespace
+{
+    bool IsUsableMovementPath(PathType type)
+    {
+        if (type & PATHFIND_NOPATH)
+            return false;
+
+        return (type & PATHFIND_NORMAL) || (type & PATHFIND_INCOMPLETE);
+    }
+
+    bool BuildMovementPath(PlayerbotAI* ai, Unit* mover, const WorldPosition& destination, Movement::PointsArray& outPath)
+    {
+        PathFinder pathfinder(mover);
+        pathfinder.calculate(destination.getX(), destination.getY(), destination.getZ(), false);
+
+        const PathType type = pathfinder.getPathType();
+        if (!IsUsableMovementPath(type))
+        {
+            if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
+                ai->TellPlayerNoFacing(ai->GetMaster(), "No usable path to destination.");
+            return false;
+        }
+
+        outPath = pathfinder.getPath();
+        if (outPath.empty())
+        {
+            if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
+                ai->TellPlayerNoFacing(ai->GetMaster(), "Pathfinder returned an empty route.");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 void MovementAction::CreateWp(Player* wpOwner, float x, float y, float z, float o, uint32 entry, bool important)
 {
     float dist = wpOwner->GetDistance(x, y, z);
@@ -769,11 +804,10 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
     if (movePath.empty() && movePosition.distance(startPosition) > maxDist)
     {
-        PathFinder pathfinder(mover);
-        //Use standard pathfinder to find a route. 
-        pathfinder.calculate(movePosition.getX(), movePosition.getY(), movePosition.getZ(), false);
-        PathType type = pathfinder.getPathType();
-        const PointsArray& points = pathfinder.getPath();
+        PointsArray points;
+        if (!BuildMovementPath(ai, mover, movePosition, points))
+            return false;
+
         movePath.addPath(startPosition.fromPointsArray(points));
     }
 
@@ -799,8 +833,8 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             lastMove.setPath(movePath);
 
             if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
-                ai->TellPlayerNoFacing(GetMaster(), "Too far from path. Rebuilding.");
-            return true;
+                ai->TellPlayerNoFacing(GetMaster(), "Shortcut invalidated the path. Rebuilding from scratch.");
+            return false;
         }
 
         TravelNodePathType pathType = TravelNodePathType::none;
@@ -980,6 +1014,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
                             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
                             ai->SetMoveToTransport(true);
+                            ai->SetRideTransport(false);
 
                             for (float angle = 0; angle < 8; angle++)
                             {
@@ -1026,6 +1061,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
                         ai->TellPlayerNoFacing(GetMaster(), "I'm on " + std::string(bot->GetTransport()->GetName()));
                     ai->SetMoveToTransport(false);
+                    ai->SetRideTransport(true);
                     entry = 0;
                 }
 
@@ -1042,6 +1078,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
                     MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
                     bot->StopMoving();
+                    ai->SetRideTransport(false);
                 }
                 else //We are traveling with the boat.
                 {
@@ -1158,15 +1195,12 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
         if (!targets.empty() && movePosition)
         {
-            PathFinder path(mover);
-            path.calculate(movePosition.getX(), movePosition.getY(), movePosition.getZ(), false);
-            PathType type = path.getPathType();
-            const PointsArray& points = path.getPath();
+            std::vector<WorldPosition> aggroPath = movePath.empty() ? std::vector<WorldPosition>{startPosition, movePosition} : movePath.getPointPath();
             bool foundAggro = false;
 
-            for (auto p : points)
+            for (const auto& pathPoint : aggroPath)
             {
-                WorldPosition point(startPosition.getMapId(), p.x, p.y, p.z, startPosition.getO());
+                WorldPosition point = pathPoint;
                 for (auto target : targets)
                 {
                     if (!target.IsCreature())
