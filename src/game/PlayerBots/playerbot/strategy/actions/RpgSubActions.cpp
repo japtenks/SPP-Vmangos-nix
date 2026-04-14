@@ -11,12 +11,27 @@
 #include "GossipDef.h"
 #include "GuildCreateActions.h"
 #include "SocialMgr.h"
+#include "GuildMgr.h"
 #include "playerbot/TravelMgr.h"
 #include "SayAction.h"
 #include "playerbot/PlayerbotLLMInterface.h"
+#include "playerbot/strategy/values/GuildValues.h"
 
 
 using namespace ai;
+
+namespace
+{
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    void TellRpgTrace(PlayerbotAI* ai, Player* requester, const std::string& text, const std::string& strategy = "debug rpg")
+    {
+        if (!ai)
+            return;
+
+        ai->TellDebug(requester ? requester : ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, strategy);
+    }
+}
 
 void RpgHelper::BeforeExecute()
 {
@@ -439,6 +454,9 @@ bool RpgAIChatAction::RequestNewLines()
     GuidPosition guidP = rpg->guidP();
 
     std::string llmContext = AI_VALUE2(std::string, "manual string", "llmcontext rpg");
+    std::string personalityPrompt = AI_VALUE2(std::string, "manual saved string", "llmdefaultprompt");
+    GuildOrder guildOrder = AI_VALUE(GuildOrder, "guild order");
+    std::vector<GuildShareItemEntry> guildShareList = AI_VALUE(std::vector<GuildShareItemEntry>, "guild share list");
 
     Unit* unit = guidP.GetUnit(bot->GetInstanceId());
 
@@ -501,6 +519,24 @@ bool RpgAIChatAction::RequestNewLines()
     for (auto& prompt : jsonFill)
     {
         prompt.second = BOT_TEXT2(prompt.second, placeholders);
+    }
+
+    if (ai->HasStrategy("debug llm", BotState::BOT_STATE_NON_COMBAT) || ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT))
+    {
+        Guild* guild = bot->GetGuildId() ? sGuildMgr.GetGuildById(bot->GetGuildId()) : nullptr;
+        MemberSlot* member = guild ? guild->GetMemberSlot(bot->GetObjectGuid()) : nullptr;
+
+        std::ostringstream memorySummary;
+        memorySummary << "rpg_memory guild=" << (guild ? guild->GetName() : "none")
+            << "#" << bot->GetGuildId()
+            << " rank=" << (member ? std::to_string(member->RankId) : "none")
+            << " order=" << (guildOrder.IsValid() ? (guildOrder.GetTypeName() + ":" + guildOrder.target) : "none")
+            << " share_entries=" << guildShareList.size()
+            << " personality=" << (personalityPrompt.empty() ? "no" : "yes")
+            << " llm_ctx=" << (llmContext.empty() ? "local_only" : "used")
+            << " target=" << guidP.to_string();
+
+        TellRpgTrace(ai, ai->GetMaster(), memorySummary.str(), "debug llm");
     }
 
     uint32 currentLength = jsonFill["<pre prompt>"].size() + jsonFill["<context>"].size() + jsonFill["<prompt>"].size() + llmContext.size();

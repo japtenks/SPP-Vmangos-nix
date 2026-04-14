@@ -12,6 +12,19 @@
 
 using namespace ai;
 
+namespace
+{
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    void TellPetitionTrace(PlayerbotAI* ai, Player* requester, const std::string& text)
+    {
+        if (!ai)
+            return;
+
+        ai->TellDebug(requester ? requester : ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, "debug travel");
+    }
+}
+
 bool PetitionSignAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
@@ -84,6 +97,11 @@ bool PetitionSignAction::Execute(Event& event)
 
     if (!accept || !ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, _inviter, true))
     {
+        TellPetitionTrace(ai, requester,
+            std::string("petition_invite result=decline inviter=") + _inviter->GetName() +
+            " petition=" + std::to_string(petitionGuid.GetCounter()) +
+            " type=" + std::to_string(type) +
+            " reason=" + (accept ? "security" : "precheck"));
         WorldPacket data(MSG_PETITION_DECLINE);
         data << petitionGuid;
         bot->GetSession()->HandlePetitionDeclineOpcode(MakeTypedPacket<WorldPackets::Petition::PetitionDecline>(data));
@@ -92,6 +110,10 @@ bool PetitionSignAction::Execute(Event& event)
     }
     if (accept)
     {
+        TellPetitionTrace(ai, requester,
+            std::string("petition_invite result=accept inviter=") + _inviter->GetName() +
+            " petition=" + std::to_string(petitionGuid.GetCounter()) +
+            " type=" + std::to_string(type));
         WorldPacket data(CMSG_PETITION_SIGN, 20);
         data << petitionGuid << unk;
         bot->GetSession()->HandlePetitionSignOpcode(MakeTypedPacket<WorldPackets::Petition::PetitionSign>(data));

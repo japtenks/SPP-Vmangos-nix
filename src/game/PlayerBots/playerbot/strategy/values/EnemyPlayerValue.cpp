@@ -6,6 +6,19 @@
 
 using namespace ai;
 
+namespace
+{
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    void TellEnemyTrace(PlayerbotAI* ai, const std::string& text)
+    {
+        if (!ai)
+            return;
+
+        ai->TellDebug(ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, "debug travel");
+    }
+}
+
 std::list<ObjectGuid> EnemyPlayersValue::Calculate()
 {
     std::list<ObjectGuid> result;
@@ -121,6 +134,8 @@ Unit* EnemyPlayerValue::Calculate()
         const uint64 botGuid = bot->GetObjectGuid().GetRawValue();
         uint32 bestEnemyPlayerHealth = std::numeric_limits<uint32>::max();
         float bestEnemyPlayerDistance = std::numeric_limits<float>::max();
+        std::vector<std::string> considered;
+        std::string selectedReason = "initial";
       
         // Use the first enemy player as a base
         Unit* firstTarget = ai->GetUnit(enemyPlayers.front());
@@ -129,6 +144,12 @@ Unit* EnemyPlayerValue::Calculate()
             bestEnemyPlayerDistance = firstTarget->GetDistance(bot);
             bestEnemyPlayerHealth = firstTarget->GetHealth();
             bestEnemyPlayer = firstTarget;
+            std::ostringstream out;
+            out << firstTarget->GetName() << "{dist=" << bestEnemyPlayerDistance
+                << ",hp=" << bestEnemyPlayerHealth
+                << ",hit=" << (sServerSocialMgr.HasHitListFlag(botGuid, firstTarget->GetObjectGuid().GetRawValue()) ? "y" : "n")
+                << "}";
+            considered.push_back(out.str());
         }
 
         for (const ObjectGuid& targetGuid : enemyPlayers)
@@ -136,11 +157,22 @@ Unit* EnemyPlayerValue::Calculate()
             Unit* target = ai->GetUnit(targetGuid);
             if (target)
             {
+                if (considered.size() < 3)
+                {
+                    std::ostringstream out;
+                    out << target->GetName() << "{dist=" << target->GetDistance(bot)
+                        << ",hp=" << target->GetHealth()
+                        << ",hit=" << (sServerSocialMgr.HasHitListFlag(botGuid, target->GetObjectGuid().GetRawValue()) ? "y" : "n")
+                        << "}";
+                    considered.push_back(out.str());
+                }
+
                 if (target->IsPlayer() &&
                     sServerSocialMgr.HasHitListFlag(botGuid, target->GetObjectGuid().GetRawValue()))
                 {
                     ai->TellDebug(ai->GetMaster(), std::string("Selecting ") + target->GetName() + " from PvP hit list.", "debug travel");
                     bestEnemyPlayer = target;
+                    selectedReason = "hit_list";
                     break;
                 }
 
@@ -149,6 +181,7 @@ Unit* EnemyPlayerValue::Calculate()
                     (bot->GetTeam() == ALLIANCE && target->HasAura(23335)))
                 {
                     bestEnemyPlayer = target;
+                    selectedReason = "flag_carrier";
                     break;
                 }
 
@@ -160,6 +193,7 @@ Unit* EnemyPlayerValue::Calculate()
                     {
                         bestEnemyPlayerDistance = distanceToEnemyPlayer;
                         bestEnemyPlayer = target;
+                        selectedReason = "closest_distance";
                     }
                 }
                 else
@@ -170,9 +204,24 @@ Unit* EnemyPlayerValue::Calculate()
                     {
                         bestEnemyPlayerHealth = enemyPlayerHealth;
                         bestEnemyPlayer = target;
+                        selectedReason = "lowest_health";
                     }
                 }
             }
+        }
+
+        if (bestEnemyPlayer && ai->HasStrategy("debug travel", BotState::BOT_STATE_NON_COMBAT))
+        {
+            std::ostringstream out;
+            out << "hit_list candidates=" << enemyPlayers.size() << " top=[";
+            for (size_t i = 0; i < considered.size(); ++i)
+            {
+                if (i)
+                    out << "; ";
+                out << considered[i];
+            }
+            out << "] selected=" << bestEnemyPlayer->GetName() << " reason=" << selectedReason;
+            TellEnemyTrace(ai, out.str());
         }
     }
 

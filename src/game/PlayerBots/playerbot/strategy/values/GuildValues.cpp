@@ -10,6 +10,19 @@
 
 using namespace ai;
 
+namespace
+{
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    void TellGuildTrace(PlayerbotAI* ai, const std::string& text, const std::string& strategy = "debug llm")
+    {
+        if (!ai)
+            return;
+
+        ai->TellDebug(ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, strategy);
+    }
+}
+
 std::string GuildOrderValue::TrimWhitespace(const std::string& str)
 {
     std::string result = str;
@@ -311,15 +324,24 @@ GuildOrder GuildOrderValue::Calculate()
     GuildOrder order;
 
     if (!bot->GetGuildId())
+    {
+        TellGuildTrace(ai, "guild_context guild=none order=none share=none", "debug travel");
         return order;
+    }
 
     Guild* guild = sGuildMgr.GetGuildById(bot->GetGuildId());
     if (!guild)
+    {
+        TellGuildTrace(ai, "guild_context guild_missing id=" + std::to_string(bot->GetGuildId()) + " order=none share=unknown", "debug travel");
         return order;
+    }
 
     MemberSlot* member = guild->GetMemberSlot(bot->GetObjectGuid());
     if (!member)
+    {
+        TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) + " member=missing", "debug travel");
         return order;
+    }
 
     std::string note = member->OFFnote;
 
@@ -336,13 +358,25 @@ GuildOrder GuildOrderValue::Calculate()
     {
         GuildOrder craftOrder = AI_VALUE(GuildOrder, "guild share craft order");
         if (craftOrder.IsValid())
+        {
+            TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+                " rank=" + std::to_string(member->RankId) + " note=none order=share_craft:" + craftOrder.target, "debug travel");
             return craftOrder;
+        }
 
         GuildOrder questRewardOrder = AI_VALUE(GuildOrder, "guild share quest reward order");
         if (questRewardOrder.IsValid())
+        {
+            TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+                " rank=" + std::to_string(member->RankId) + " note=none order=share_quest:" + questRewardOrder.target, "debug travel");
             return questRewardOrder;
+        }
 
-        return AI_VALUE(GuildOrder, "guild share farm order");
+        GuildOrder shareFarmOrder = AI_VALUE(GuildOrder, "guild share farm order");
+        TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+            " rank=" + std::to_string(member->RankId) + " note=none order=" +
+            (shareFarmOrder.IsValid() ? ("share_farm:" + shareFarmOrder.target) : "none"), "debug travel");
+        return shareFarmOrder;
     }
 
     std::string body;
@@ -407,15 +441,29 @@ GuildOrder GuildOrderValue::Calculate()
     {
         GuildOrder craftOrder = AI_VALUE(GuildOrder, "guild share craft order");
         if (craftOrder.IsValid())
+        {
+            TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+                " rank=" + std::to_string(member->RankId) + " note=" + note + " fallback=share_craft:" + craftOrder.target, "debug travel");
             return craftOrder;
+        }
 
         GuildOrder questRewardOrder = AI_VALUE(GuildOrder, "guild share quest reward order");
         if (questRewardOrder.IsValid())
+        {
+            TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+                " rank=" + std::to_string(member->RankId) + " note=" + note + " fallback=share_quest:" + questRewardOrder.target, "debug travel");
             return questRewardOrder;
+        }
 
-        return AI_VALUE(GuildOrder, "guild share farm order");
+        GuildOrder shareFarmOrder = AI_VALUE(GuildOrder, "guild share farm order");
+        TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+            " rank=" + std::to_string(member->RankId) + " note=" + note + " fallback=" +
+            (shareFarmOrder.IsValid() ? ("share_farm:" + shareFarmOrder.target) : "none"), "debug travel");
+        return shareFarmOrder;
     }
 
+    TellGuildTrace(ai, "guild_context guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+        " rank=" + std::to_string(member->RankId) + " note=" + note + " order=" + order.GetTypeName() + ":" + order.target, "debug travel");
     return order;
 }
 
@@ -537,11 +585,17 @@ std::vector<GuildShareItemEntry> GuildShareListValue::Calculate()
 
     std::string ginfo = guild->GetGINFO();
     if (ginfo.empty())
+    {
+        TellGuildTrace(ai, "guild_share guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) + " found=no reason=empty_info");
         return result;
+    }
 
     auto sharePos = ginfo.find("Share:");
     if (sharePos == std::string::npos)
+    {
+        TellGuildTrace(ai, "guild_share guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) + " found=no reason=no_share_block");
         return result;
+    }
 
     std::string shareSection = ginfo.substr(sharePos + 6);
 
@@ -617,6 +671,8 @@ std::vector<GuildShareItemEntry> GuildShareListValue::Calculate()
         }
     }
 
+    TellGuildTrace(ai, "guild_share guild=" + guild->GetName() + "#" + std::to_string(guild->GetId()) +
+        " found=" + std::string(result.empty() ? "no" : "yes") + " entries=" + std::to_string(result.size()));
     return result;
 }
 

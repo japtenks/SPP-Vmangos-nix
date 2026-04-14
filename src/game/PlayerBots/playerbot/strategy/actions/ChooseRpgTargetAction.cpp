@@ -18,6 +18,20 @@ using namespace ai;
 
 namespace
 {
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    std::string GetRpgContextMode(PlayerbotAI* ai)
+    {
+        if (!ai)
+            return "ctx=local";
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return "ctx=local";
+
+        return context->GetValue<std::string>("manual string", "llmcontext rpg")->Get().empty() ? "ctx=local" : "ctx=llm";
+    }
+
     struct SocialTargetBreakdown
     {
         float hubBonus = 0.0f;
@@ -580,7 +594,8 @@ bool ChooseRpgTargetAction::Execute(Event& event)
             out << chat->formatWorldobject(guidP.GetWorldObject(bot->GetInstanceId()));
 
             out << std::fixed << std::setprecision(2);
-            out << " " << rgpActionReason[guidP] << " " << target.second << " " << FormatSocialTargetBreakdown(ai, guidP);
+            out << " " << kDecisionTracePrefix << " " << rgpActionReason[guidP] << " " << target.second << " "
+                << FormatSocialTargetBreakdown(ai, guidP) << " " << GetRpgContextMode(ai);
 
             ai->TellPlayerNoFacing(requester, out);
 
@@ -643,7 +658,8 @@ bool ChooseRpgTargetAction::Execute(Event& event)
         out << chat->formatWorldobject(guidP.GetWorldObject(bot->GetInstanceId()));
 
         out << std::fixed << std::setprecision(2);
-        out << " " << rgpActionReason[guidP] << " " << targets[guidP] << " " << FormatSocialTargetBreakdown(ai, guidP);
+        out << " " << kDecisionTracePrefix << " " << rgpActionReason[guidP] << " " << targets[guidP] << " "
+            << FormatSocialTargetBreakdown(ai, guidP) << " " << GetRpgContextMode(ai);
 
         ai->TellPlayerNoFacing(requester, out);
     }

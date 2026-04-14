@@ -17,6 +17,56 @@ using namespace ai;
 
 namespace
 {
+    constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
+
+    std::string FormatTravelPurpose(TravelDestinationPurpose purpose)
+    {
+        auto itr = TravelDestinationPurposeName.find(purpose);
+        if (itr != TravelDestinationPurposeName.end())
+            return itr->second;
+
+        return std::to_string(static_cast<uint32>(purpose));
+    }
+
+    std::string FormatCommittedTaskSummary(PlayerbotAI* ai)
+    {
+        if (!ai)
+            return "task=none";
+
+        CommittedTask const& committedTask = ai->GetCommittedTask();
+        std::ostringstream out;
+        out << "task={purpose=" << FormatTravelPurpose(committedTask.purpose)
+            << ",quest=" << committedTask.questId
+            << ",entry=" << committedTask.destinationEntry
+            << ",obj=" << static_cast<uint32>(committedTask.objectiveIndex)
+            << ",tier=" << InterruptTierToString(committedTask.GetInterruptTier())
+            << ",valid=" << (committedTask.isValid ? "yes" : "no")
+            << ",retry=" << static_cast<uint32>(committedTask.retryCount)
+            << "}";
+        return out.str();
+    }
+
+    std::string FormatDecisionState(PlayerbotAI* ai)
+    {
+        if (!ai)
+            return "archetype=unknown session=unknown";
+
+        BotSession const& session = ai->GetSession();
+        std::ostringstream out;
+        out << "archetype=" << BotArchetypeToString(ai->GetArchetype())
+            << " session=" << SessionStateToString(session.state)
+            << (session.isPaused ? "(paused)" : "");
+        return out.str();
+    }
+
+    void TellTravelTrace(PlayerbotAI* ai, Player* requester, const std::string& text)
+    {
+        if (!ai)
+            return;
+
+        ai->TellDebug(requester ? requester : ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, "debug travel");
+    }
+
     bool HasPendingTravelDestinations(FutureDestinations* futureDestinations)
     {
         return futureDestinations &&
@@ -1233,7 +1283,9 @@ bool RequestTravelTargetAction::Execute(Event& event)
 
     if (HasPendingTravelDestinations(futureDestinations))
     {
-        ai->TellDebug(ai->GetMaster(), "Suppressing " + TravelDestinationPurposeName.at(actionPurpose) + " fetch because one is already pending.", "debug travel");
+        TellTravelTrace(ai, ai->GetMaster(),
+            "travel_suppressed reason=pending_fetch candidate=" + FormatTravelPurpose(actionPurpose) +
+            " source=" + getQualifier() + " " + FormatDecisionState(ai) + " " + FormatCommittedTaskSummary(ai));
         return false;
     }
 
@@ -1333,7 +1385,9 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
 
     if (HasPendingTravelDestinations(futureDestinations))
     {
-        ai->TellDebug(ai->GetMaster(), "Suppressing travel " + travelName + " fetch because one is already pending.", "debug travel");
+        TellTravelTrace(ai, ai->GetMaster(),
+            "travel_suppressed reason=pending_fetch candidate=" + travelName +
+            " source=" + event.getSource() + " " + FormatDecisionState(ai) + " " + FormatCommittedTaskSummary(ai));
         return false;
     }
 
@@ -1912,7 +1966,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     FutureDestinations* futureDestinations = AI_VALUE(FutureDestinations*, "future travel destinations");
     if (HasPendingTravelDestinations(futureDestinations))
     {
-        ai->TellDebug(ai->GetMaster(), "Suppressing quest travel fetch because one is already pending.", "debug travel");
+        TellTravelTrace(ai, ai->GetMaster(),
+            "travel_suppressed reason=pending_fetch candidate=quest source=" + event.getSource() +
+            " " + FormatDecisionState(ai) + " " + FormatCommittedTaskSummary(ai));
         return false;
     }
 
