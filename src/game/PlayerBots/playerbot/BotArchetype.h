@@ -28,6 +28,10 @@ namespace ai
         float chainWeight = 1.0f;
         float zoneWeight = 1.0f;
         float levelWeight = 1.0f;
+        float knowledgeWeight = 1.0f;
+        float curiosityWeight = 1.0f;
+        float routineTolerance = 1.0f;
+        float explorationRadiusBias = 1.0f;
 
         float fleeHealthThreshold = 0.25f;
         float hazardSeverityThreshold = 0.50f;

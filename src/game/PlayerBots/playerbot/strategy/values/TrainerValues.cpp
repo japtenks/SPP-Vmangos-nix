@@ -13,6 +13,24 @@ using namespace ai;
 
 namespace
 {
+    uint32 GetKnowledgeCityId(Player* bot)
+    {
+        if (!bot)
+            return 0;
+
+        AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(sServerFacade.GetAreaId(bot));
+        while (areaEntry && areaEntry->ZoneId)
+        {
+            AreaTableEntry const* parentArea = GetAreaEntryByAreaID(areaEntry->ZoneId);
+            if (!parentArea || parentArea == areaEntry)
+                break;
+
+            areaEntry = parentArea;
+        }
+
+        return areaEntry ? areaEntry->Id : bot->GetZoneId();
+    }
+
     std::vector<uint32> GetMissingWeaponSkills(Player* bot)
     {
         std::vector<uint32> missingSkills;
@@ -96,12 +114,34 @@ namespace
         return false;
     }
 
-    float GetTrainerKnowledgeScore(uint32 trainerEntry, uint32 trainerRequirement, std::vector<uint32> const& teachIds, Player* bot)
+    float GetTrainerKnowledgeScore(uint32 trainerEntry, uint32 trainerRequirement, std::vector<uint32> const& teachIds, Player* bot, bool useSkillKnowledge)
     {
         if (!bot || teachIds.empty())
             return 0.0f;
 
-        return sServerSharedKnowledge.GetTrainerTeachingConfidence(trainerEntry, trainerRequirement, teachIds, bot->GetMapId());
+        const uint32 cityId = GetKnowledgeCityId(bot);
+        if (useSkillKnowledge)
+            return sServerSharedKnowledge.GetTrainerSkillConfidence(trainerEntry, trainerRequirement, teachIds, bot->GetMapId(), cityId);
+
+        return sServerSharedKnowledge.GetTrainerTeachingConfidence(trainerEntry, trainerRequirement, teachIds, bot->GetMapId(), cityId);
+    }
+
+    float GetTrainerPreferenceScore(Player* bot, float knowledgeConfidence)
+    {
+        if (!bot || !bot->GetPlayerbotAI())
+            return knowledgeConfidence;
+
+        const ArchetypeWeights& weights = bot->GetPlayerbotAI()->GetArchetypeWeights();
+        const float knowledgeMaturity = sServerSharedKnowledge.GetKnowledgeMaturity();
+        const float routineBias = 0.75f + (0.25f * weights.routineTolerance);
+        const float explorationBias = 0.60f + (0.40f * weights.explorationRadiusBias);
+        const float knowledgeBonus = knowledgeConfidence * weights.knowledgeWeight * routineBias * (0.35f + (0.65f * knowledgeMaturity));
+
+        if (knowledgeConfidence > 0.0f)
+            return knowledgeBonus;
+
+        const float curiosityBonus = 0.10f * weights.curiosityWeight * explorationBias * (1.0f - (0.70f * knowledgeMaturity));
+        return curiosityBonus;
     }
 }
 
@@ -271,6 +311,7 @@ std::vector<int32> AvailableTrainersValue::Calculate()
     std::vector<int32> retTrainers;
     const bool needsWeaponSkillTraining = !GetMissingWeaponSkills(bot).empty();
     std::unordered_map<int32, float> trainerKnowledgeScores;
+    const uint32 cityId = GetKnowledgeCityId(bot);
 
     int8 qualifierType = getQualifier().empty() ? -1 : stoi(getQualifier());
 
@@ -301,12 +342,13 @@ std::vector<int32> AvailableTrainersValue::Calculate()
                             continue;
 
                         for (int32 trainer : trainers)
-                            sServerSharedKnowledge.RecordTrainerSkill(trainer, bot->GetClass(), skillId, bot->GetMapId(), 0.05f);
+                            sServerSharedKnowledge.RecordTrainerSkill(trainer, bot->GetClass(), skillId, bot->GetMapId(), cityId, 0.05f);
                     }
 
                     for (auto& trainer : trainers)
                     {
-                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, bot->GetClass(), GetMissingWeaponSkills(bot), bot));
+                        const float knowledgeScore = GetTrainerKnowledgeScore(trainer, bot->GetClass(), GetMissingWeaponSkills(bot), bot, true);
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerPreferenceScore(bot, knowledgeScore));
                         if (std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                             retTrainers.push_back(trainer);
                     }
@@ -322,13 +364,18 @@ std::vector<int32> AvailableTrainersValue::Calculate()
                 for (uint32 teachId : taughtSkills)
                 {
                     for (int32 trainer : trainers)
-                        sServerSharedKnowledge.RecordTrainerTeaching(trainer, requirement, teachId, bot->GetMapId(), 0.02f);
+                        sServerSharedKnowledge.RecordTrainerTeaching(trainer, requirement, teachId, bot->GetMapId(), cityId, 0.02f);
                 }
 
                 for (auto& trainer : trainers)
                 {
                     if (!taughtSkills.empty())
-                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, requirement, taughtSkills, bot));
+                    {
+                        const float knowledgeScore = GetTrainerKnowledgeScore(trainer, requirement, taughtSkills, bot, false);
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerPreferenceScore(bot, knowledgeScore));
+                    }
+                    else
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerPreferenceScore(bot, 0.0f));
 
                     if(std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                         retTrainers.push_back(trainer);

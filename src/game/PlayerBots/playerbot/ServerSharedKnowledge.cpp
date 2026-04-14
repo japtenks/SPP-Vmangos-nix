@@ -6,65 +6,109 @@
 
 INSTANTIATE_SINGLETON_1(ServerSharedKnowledge);
 
-void ServerSharedKnowledge::RecordTrainerTeaching(uint32 trainerEntry, uint32 trainerRequirement, uint32 teachId, uint32 mapId, float delta)
+namespace
 {
-    if (!trainerEntry || !trainerRequirement || !teachId)
+    float ClampKnowledgeMaturity(uint32 observations)
+    {
+        constexpr float matureObservationTarget = 200.0f;
+        return std::min(1.0f, static_cast<float>(observations) / matureObservationTarget);
+    }
+}
+
+void ServerSharedKnowledge::RecordNpcUsefulness(uint32 npcEntry, uint32 purpose, uint32 requirement, uint32 offeredId, uint32 mapId, uint32 cityId, float delta)
+{
+    if (!npcEntry || !purpose || !requirement || !offeredId)
         return;
 
-    TrainerTeachingKnowledgeKey key;
-    key.trainerEntry = trainerEntry;
-    key.trainerRequirement = trainerRequirement;
-    key.teachId = teachId;
-    key.mapId = mapId;
+    NpcUsefulnessKnowledgeKey key{npcEntry, purpose, requirement, offeredId, mapId, cityId};
 
-    std::unique_lock<std::shared_mutex> lock(m_trainerTeachingMutex);
-    TrainerTeachingKnowledgeEntry& entry = m_trainerTeachingKnowledge[key];
+    std::unique_lock<std::shared_mutex> lock(m_npcUsefulnessMutex);
+    NpcUsefulnessKnowledgeEntry& entry = m_npcUsefulnessKnowledge[key];
     entry.confidence = std::min(1.0f, entry.confidence + delta);
     ++entry.observations;
     entry.lastConfirmed = time(nullptr);
 }
 
-float ServerSharedKnowledge::GetTrainerTeachingConfidence(uint32 trainerEntry, uint32 trainerRequirement, uint32 teachId, uint32 mapId) const
+float ServerSharedKnowledge::GetNpcUsefulnessConfidence(uint32 npcEntry, uint32 purpose, uint32 requirement, uint32 offeredId, uint32 mapId, uint32 cityId) const
 {
-    if (!trainerEntry || !trainerRequirement || !teachId)
+    if (!npcEntry || !purpose || !requirement || !offeredId)
         return 0.0f;
 
-    TrainerTeachingKnowledgeKey exactKey{ trainerEntry, trainerRequirement, teachId, mapId };
-    TrainerTeachingKnowledgeKey anyMapKey{ trainerEntry, trainerRequirement, teachId, 0 };
+    const NpcUsefulnessKnowledgeKey lookupKeys[] =
+    {
+        { npcEntry, purpose, requirement, offeredId, mapId, cityId },
+        { npcEntry, purpose, requirement, offeredId, mapId, 0 },
+        { npcEntry, purpose, requirement, offeredId, 0, cityId },
+        { npcEntry, purpose, requirement, offeredId, 0, 0 }
+    };
 
-    std::shared_lock<std::shared_mutex> lock(m_trainerTeachingMutex);
-
-    auto exactItr = m_trainerTeachingKnowledge.find(exactKey);
-    if (exactItr != m_trainerTeachingKnowledge.end())
-        return exactItr->second.confidence;
-
-    auto anyMapItr = m_trainerTeachingKnowledge.find(anyMapKey);
-    if (anyMapItr != m_trainerTeachingKnowledge.end())
-        return anyMapItr->second.confidence;
+    std::shared_lock<std::shared_mutex> lock(m_npcUsefulnessMutex);
+    for (NpcUsefulnessKnowledgeKey const& key : lookupKeys)
+    {
+        auto itr = m_npcUsefulnessKnowledge.find(key);
+        if (itr != m_npcUsefulnessKnowledge.end())
+            return itr->second.confidence;
+    }
 
     return 0.0f;
 }
 
-float ServerSharedKnowledge::GetTrainerTeachingConfidence(uint32 trainerEntry, uint32 trainerRequirement, std::vector<uint32> const& teachIds, uint32 mapId) const
+float ServerSharedKnowledge::GetNpcUsefulnessConfidence(uint32 npcEntry, uint32 purpose, uint32 requirement, std::vector<uint32> const& offeredIds, uint32 mapId, uint32 cityId) const
 {
     float confidence = 0.0f;
-    for (uint32 teachId : teachIds)
-        confidence = std::max(confidence, GetTrainerTeachingConfidence(trainerEntry, trainerRequirement, teachId, mapId));
+    for (uint32 offeredId : offeredIds)
+        confidence = std::max(confidence, GetNpcUsefulnessConfidence(npcEntry, purpose, requirement, offeredId, mapId, cityId));
 
     return confidence;
 }
 
-void ServerSharedKnowledge::RecordTrainerSkill(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId, float delta)
+uint32 ServerSharedKnowledge::GetNpcUsefulnessObservations(uint32 purpose) const
 {
-    RecordTrainerTeaching(trainerEntry, trainerClass, skillId, mapId, delta);
+    std::shared_lock<std::shared_mutex> lock(m_npcUsefulnessMutex);
+
+    uint32 observations = 0;
+    for (auto const& [key, entry] : m_npcUsefulnessKnowledge)
+    {
+        if (purpose && key.purpose != purpose)
+            continue;
+
+        observations += entry.observations;
+    }
+
+    return observations;
 }
 
-float ServerSharedKnowledge::GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId) const
+float ServerSharedKnowledge::GetKnowledgeMaturity(uint32 purpose) const
 {
-    return GetTrainerTeachingConfidence(trainerEntry, trainerClass, skillId, mapId);
+    return ClampKnowledgeMaturity(GetNpcUsefulnessObservations(purpose));
 }
 
-float ServerSharedKnowledge::GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, std::vector<uint32> const& skillIds, uint32 mapId) const
+void ServerSharedKnowledge::RecordTrainerTeaching(uint32 trainerEntry, uint32 trainerRequirement, uint32 teachId, uint32 mapId, uint32 cityId, float delta)
 {
-    return GetTrainerTeachingConfidence(trainerEntry, trainerClass, skillIds, mapId);
+    RecordNpcUsefulness(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_TEACHING), trainerRequirement, teachId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetTrainerTeachingConfidence(uint32 trainerEntry, uint32 trainerRequirement, uint32 teachId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_TEACHING), trainerRequirement, teachId, mapId, cityId);
+}
+
+float ServerSharedKnowledge::GetTrainerTeachingConfidence(uint32 trainerEntry, uint32 trainerRequirement, std::vector<uint32> const& teachIds, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_TEACHING), trainerRequirement, teachIds, mapId, cityId);
+}
+
+void ServerSharedKnowledge::RecordTrainerSkill(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId, uint32 cityId, float delta)
+{
+    RecordNpcUsefulness(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_SKILL), trainerClass, skillId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_SKILL), trainerClass, skillId, mapId, cityId);
+}
+
+float ServerSharedKnowledge::GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, std::vector<uint32> const& skillIds, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_SKILL), trainerClass, skillIds, mapId, cityId);
 }
