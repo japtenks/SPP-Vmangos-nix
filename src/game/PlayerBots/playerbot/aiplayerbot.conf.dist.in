@@ -12,13 +12,16 @@ ConfVersion=2020072501
 ###################################################################################################
 
 # Delete all random bot accounts and characters (full reset)
-AiPlayerbot.DeleteRandomBotAccounts = 0
+# One-shot reset profile: set back to 0 after the first successful restart.
+AiPlayerbot.DeleteRandomBotAccounts = 1
 
 # Delete all random bot guilds
-AiPlayerbot.DeleteRandomBotGuilds = 0
+# One-shot reset profile: set back to 0 after the first successful restart.
+AiPlayerbot.DeleteRandomBotGuilds = 1
 
 # Delete all random bot arena teams
-AiPlayerbot.DeleteRandomBotArenaTeams = 0
+# One-shot reset profile: set back to 0 after the first successful restart.
+AiPlayerbot.DeleteRandomBotArenaTeams = 1
 
 ###################################################################################################
 # CORE / STARTUP
@@ -42,7 +45,7 @@ AiPlayerbot.RandomBotAutoCreate = 1
 AiPlayerbot.RandomBotAutologin = 1
 
 # Log on all random bots on start
-AiPlayerbot.RandomBotLoginAtStartup = 1
+AiPlayerbot.RandomBotLoginAtStartup = 0
 
 # Auto-login all player alts as bots on player login
 AiPlayerbot.BotAutologin = 0
@@ -70,8 +73,8 @@ AiPlayerbot.RandomBotShowCloak = 1
 # AiPlayerbot.RandomBotLoginWithPlayer = 0
 
 # Random bot count
-AiPlayerbot.MinRandomBots = 1000
-AiPlayerbot.MaxRandomBots = 1000
+AiPlayerbot.MinRandomBots = 300
+AiPlayerbot.MaxRandomBots = 500
 
 # Bot level bounds
 AiPlayerbot.RandomBotMinLevel = 1
@@ -86,15 +89,14 @@ AiPlayerbot.RandomBotAccountCount = 200
 
 # Disable random levels for randombots.
 # When enabled, every bot starts at the specified level and levels by playing.
-AiPlayerbot.DisableRandomLevels = 0
+AiPlayerbot.DisableRandomLevels = 1
 
 # Set randombots starting level here if DisableRandomLevels is enabled
-# Recommended: 5+
-# AiPlayerbot.randombotStartingLevel = 5
+AiPlayerbot.randombotStartingLevel = 1
 
 # Set XP rate for bots
 # Server XP Rate * AiPlayerbot.XPRate
-# AiPlayerbot.XPRate = 1
+AiPlayerbot.XPRate = 2
 
 # Mark many quests <= bot level as complete (slows down bot creation)
 AiPlayerbot.PreQuests = 0
@@ -106,11 +108,12 @@ AiPlayerbot.PreQuests = 0
 ###################################################################################################
 
 # Disable core mangos map/bot optimizations which hinder bot activity.
-# Works best together with DisableActivityPriorities = 1.
-# AiPlayerbot.DisableBotOptimizations = 0
+# Keep optimizations enabled for the first post-wipe validation pass.
+AiPlayerbot.DisableBotOptimizations = 0
 
 # Disable bot activity priorities, making online bots stay fully active regardless of nearby players.
-# AiPlayerbot.DisableActivityPriorities = 0
+# Keep activity priorities enabled for the first post-wipe validation pass.
+AiPlayerbot.DisableActivityPriorities = 0
 
 # Force bots to become active when a player is nearby
 # AiPlayerbot.ForceActiveWhenNearPlayer = 0
@@ -145,24 +148,24 @@ AiPlayerbot.RandomBotJoinBG = 1
 AiPlayerbot.RandomBotAutoJoinBG = 0
 
 # Random bot guild count
-AiPlayerbot.RandomBotGuildCount = 20
+AiPlayerbot.RandomBotGuildCount = 0
 
 # Random bot arena team count
-AiPlayerbot.RandomBotArenaTeamCount = 20
+AiPlayerbot.RandomBotArenaTeamCount = 0
 
 # Randombots will invite players to groups/raids/guilds
-# AiPlayerbot.RandomBotInvitePlayer = 1
+AiPlayerbot.RandomBotInvitePlayer = 0
 
 # Randombots will invite nearby bots to groups/raids/guilds
-# AiPlayerbot.RandomBotGroupNearby = 1
-# AiPlayerbot.RandomBotRaidNearby = 1
-# AiPlayerbot.RandomBotGuildNearby = 1
+AiPlayerbot.RandomBotGroupNearby = 0
+AiPlayerbot.RandomBotRaidNearby = 0
+AiPlayerbot.RandomBotGuildNearby = 0
 
 # Randombots will form guilds by buying a charter, getting signatures and handing it in
-# AiPlayerbot.RandomBotFormGuild = 1
+AiPlayerbot.RandomBotFormGuild = 0
 
 # Bots will chat in say/guild when they invite other bots to groups/raids/guilds
-# AiPlayerbot.InviteChat = 1
+AiPlayerbot.InviteChat = 0
 
 # Bots will put their talent spec in guild notes when they have the rights
 # AiPlayerbot.TalentsInPublicNote = 0
@@ -299,10 +302,10 @@ AiPlayerbot.AutoLearnDroppedSpells = 0
 AiPlayerbot.SyncQuestWithPlayer = 0
 
 # Random bots will pick quests on their own and try to complete them
-# AiPlayerbot.AutoDoQuests = 1
+AiPlayerbot.AutoDoQuests = 1
 
 # Random bots will also move to destinations when not seen by players
-# AiPlayerbot.EnableMinimalMove = 1
+AiPlayerbot.EnableMinimalMove = 1
 
 ###################################################################################################
 # POLICY / SAFETY
@@ -679,9 +682,9 @@ AiPlayerbot.FleeingEnabled = 1
 
 # Intervals
 #AiPlayerbot.RandomBotUpdateInterval = 1000
-#AiPlayerbot.RandomBotsMaxLoginsPerInterval = 10
-AiPlayerbot.RandomBotCountChangeMinInterval = 1800
-AiPlayerbot.RandomBotCountChangeMaxInterval = 7200
+AiPlayerbot.RandomBotsMaxLoginsPerInterval = 25
+AiPlayerbot.RandomBotCountChangeMinInterval = 600
+AiPlayerbot.RandomBotCountChangeMaxInterval = 1800
 #AiPlayerbot.MinRandomBotInWorldTime = 3600
 #AiPlayerbot.MaxRandomBotInWorldTime = 1209600
 #AiPlayerbot.MinRandomBotRandomizeTime = 7200
