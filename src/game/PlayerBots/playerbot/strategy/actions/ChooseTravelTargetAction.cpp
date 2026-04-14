@@ -1876,14 +1876,17 @@ bool RequestNamedTravelTargetAction::isAllowed() const
 
 bool RequestQuestTravelTargetAction::Execute(Event& event)
 {
+    if (!ai || !bot || !context)
+        return false;
+
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
-    const EntryQuestRelationMap relationMap = AI_VALUE(EntryQuestRelationMap, "entry quest relation");
+    const EntryQuestRelationMap relationMap = AI_VALUE_SAFE(EntryQuestRelationMap, "entry quest relation");
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
     std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0, static_cast<float>(400 + bot->GetLevel() * 10)} };
 
-    for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
+    for (ObjectGuid guid : AI_VALUE_SAFE(std::list<ObjectGuid>, "group members"))
     {
         Player* player = sObjectMgr.GetPlayer(guid);
 
