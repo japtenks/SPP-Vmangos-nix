@@ -139,6 +139,7 @@ Unit* EnemyPlayerValue::Calculate()
                 if (target->IsPlayer() &&
                     sServerSocialMgr.HasHitListFlag(botGuid, target->GetObjectGuid().GetRawValue()))
                 {
+                    ai->TellDebug(ai->GetMaster(), std::string("Selecting ") + target->GetName() + " from PvP hit list.", "debug travel");
                     bestEnemyPlayer = target;
                     break;
                 }

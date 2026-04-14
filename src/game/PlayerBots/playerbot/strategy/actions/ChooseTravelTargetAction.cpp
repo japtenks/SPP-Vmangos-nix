@@ -1232,7 +1232,10 @@ bool RequestTravelTargetAction::Execute(Event& event)
     FutureDestinations* futureDestinations = AI_VALUE(FutureDestinations*, "future travel destinations");
 
     if (HasPendingTravelDestinations(futureDestinations))
+    {
+        ai->TellDebug(ai->GetMaster(), "Suppressing " + TravelDestinationPurposeName.at(actionPurpose) + " fetch because one is already pending.", "debug travel");
         return false;
+    }
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 
@@ -1329,7 +1332,10 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     FutureDestinations* futureDestinations = AI_VALUE(FutureDestinations*, "future travel destinations");
 
     if (HasPendingTravelDestinations(futureDestinations))
+    {
+        ai->TellDebug(ai->GetMaster(), "Suppressing travel " + travelName + " fetch because one is already pending.", "debug travel");
         return false;
+    }
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
 
@@ -1905,7 +1911,10 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
     FutureDestinations* futureDestinations = AI_VALUE(FutureDestinations*, "future travel destinations");
     if (HasPendingTravelDestinations(futureDestinations))
+    {
+        ai->TellDebug(ai->GetMaster(), "Suppressing quest travel fetch because one is already pending.", "debug travel");
         return false;
+    }
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     const EntryQuestRelationMap relationMap = AI_VALUE_SAFE(EntryQuestRelationMap, "entry quest relation");

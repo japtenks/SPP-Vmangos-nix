@@ -4,6 +4,7 @@
 #include "Guild/GuildMgr.h"
 #include "ObjectMgr.h"
 #include "Database/DatabaseEnv.h"
+#include "Log.h"
 #include "Policies/SingletonImp.h"
 #include "playerbot/PlayerbotAI.h"
 #include "playerbot/ServerFacade.h"
@@ -64,6 +65,17 @@ namespace
         }
 
         return contenders;
+    }
+
+    void LogRelationshipChange(char const* label, uint64 ownerGuid, uint64 targetGuid, float delta,
+        SocialRelationshipEntry const& entry, std::string const& reason)
+    {
+        if (reason.empty())
+            return;
+
+        sLog.Out(LOG_BASIC, LOG_LVL_DEBUG,
+            "BOTSOCIAL %s owner=%llu target=%llu delta=%.3f affinity=%.3f hostility=%.3f flags=%u reason=%s",
+            label, ownerGuid, targetGuid, delta, entry.affinity, entry.hostility, entry.flags, reason.c_str());
     }
 }
 
@@ -183,7 +195,7 @@ uint32 ServerSocialMgr::GetKnownContactCount(uint64 ownerGuid)
     return count;
 }
 
-void ServerSocialMgr::AddAffinity(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags)
+void ServerSocialMgr::AddAffinity(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags, std::string const& reason)
 {
     if (!ownerGuid || !targetGuid || ownerGuid == targetGuid || delta <= 0.0f)
         return;
@@ -200,9 +212,10 @@ void ServerSocialMgr::AddAffinity(uint64 ownerGuid, uint64 targetGuid, float del
     entry.flags |= flags | SOCIAL_RELATIONSHIP_KNOWN;
     entry.lastInteraction = time(nullptr);
     SaveRelationship(ownerGuid, targetGuid, entry);
+    LogRelationshipChange("AFFINITY", ownerGuid, targetGuid, delta, entry, reason);
 }
 
-void ServerSocialMgr::AddHostility(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags)
+void ServerSocialMgr::AddHostility(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags, std::string const& reason)
 {
     if (!ownerGuid || !targetGuid || ownerGuid == targetGuid || delta <= 0.0f)
         return;
@@ -224,6 +237,7 @@ void ServerSocialMgr::AddHostility(uint64 ownerGuid, uint64 targetGuid, float de
 
     entry.lastInteraction = time(nullptr);
     SaveRelationship(ownerGuid, targetGuid, entry);
+    LogRelationshipChange("HOSTILITY", ownerGuid, targetGuid, delta, entry, reason);
 }
 
 void ServerSocialMgr::ObserveMutualSocialContact(Player* owner, Player* target, bool sameGuild)
@@ -249,8 +263,8 @@ void ServerSocialMgr::ObserveMutualSocialContact(Player* owner, Player* target, 
     const float delta = 0.015f * distanceBias * (sameGuild ? 1.5f : 1.0f);
     const uint32 flags = sameGuild ? (SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY) : SOCIAL_RELATIONSHIP_KNOWN;
 
-    AddAffinity(ownerGuid, targetGuid, delta, flags);
-    AddAffinity(targetGuid, ownerGuid, delta, flags);
+    AddAffinity(ownerGuid, targetGuid, delta, flags, sameGuild ? "social_contact_same_guild" : "social_contact");
+    AddAffinity(targetGuid, ownerGuid, delta, flags, sameGuild ? "social_contact_same_guild" : "social_contact");
 }
 
 GuildHubState ServerSocialMgr::LoadGuildHubState(uint32 guildId)
@@ -357,6 +371,7 @@ void ServerSocialMgr::ObserveGuildArea(Player* bot, uint32 areaId, float weightM
         return;
 
     GuildHubState state = GetGuildHubState(guild->GetId());
+    const uint32 oldPreferredAreaId = state.preferredAreaId;
 
     float roleWeight = 1.0f;
     MemberSlot* member = guild->GetMemberSlot(bot->GetObjectGuid());
@@ -390,6 +405,13 @@ void ServerSocialMgr::ObserveGuildArea(Player* bot, uint32 areaId, float weightM
     cacheEntry.loaded = true;
     cacheEntry.state = state;
     SaveGuildHubState(guild->GetId(), state);
+
+    if (state.preferredAreaId && state.preferredAreaId != oldPreferredAreaId)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_DEBUG,
+            "BOTSOCIAL GUILD_HUB_SHIFT guild=%u old_area=%u new_area=%u actor=%s role_weight=%.2f weight_multiplier=%.2f",
+            guild->GetId(), oldPreferredAreaId, state.preferredAreaId, bot->GetName(), roleWeight, weightMultiplier);
+    }
 }
 
 float ServerSocialMgr::GetGuildJoinBias(Player* bot, Guild* guild, uint64 inviterGuid)

@@ -48,7 +48,8 @@ bool HonorGainAction::Execute(Event& event)
                 bot->GetObjectGuid().GetRawValue(),
                 player->GetObjectGuid().GetRawValue(),
                 0.18f,
-                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST,
+                "honorable_kill");
 
             if (player->GetPlayerbotAI())
             {
@@ -56,7 +57,8 @@ bool HonorGainAction::Execute(Event& event)
                     player->GetObjectGuid().GetRawValue(),
                     bot->GetObjectGuid().GetRawValue(),
                     0.22f,
-                    SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+                    SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST,
+                    "killed_by_playerbot");
             }
 
             if (!bot->InBattleGround()

@@ -29,6 +29,7 @@ bool GuildAcceptAction::Execute(Event& event)
     uint32 guildId = inviter->GetGuildId();
     if (!guildId)
     {
+        ai->TellDebug(requester, "Declining guild invite because inviter has no guild.", "debug travel");
         ai->TellError(requester, "You are not in a guild!");
 
         if(sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
@@ -38,6 +39,7 @@ bool GuildAcceptAction::Execute(Event& event)
     }
     else if (bot->GetGuildId())
     {
+        ai->TellDebug(requester, "Declining guild invite because bot is already guilded.", "debug travel");
         ai->TellError(requester, "Sorry, I am in a guild already");
 
         if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
@@ -47,6 +49,7 @@ bool GuildAcceptAction::Execute(Event& event)
     }
     else if (!ai->GetSecurity()->CheckLevelFor(PlayerbotSecurityLevel::PLAYERBOT_SECURITY_GUILD, false, inviter, true))
     {
+        ai->TellDebug(requester, "Declining guild invite because security policy rejected inviter.", "debug travel");
         ai->TellError(requester, "Sorry, I don't want to join your guild :(");
 
         if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
@@ -60,6 +63,7 @@ bool GuildAcceptAction::Execute(Event& event)
 
     if(guild && guild->GetMemberSize() > 1000)
     {
+        ai->TellDebug(requester, std::string("Declining guild invite from ") + guild->GetName() + " because guild is oversized.", "debug travel");
         ai->TellError(requester, "This guild has over 1000 members. To stop it from reaching the 1064 member limit I refuse to join it.");
 
         if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
@@ -69,6 +73,7 @@ bool GuildAcceptAction::Execute(Event& event)
     }
     else if (guild && guildJoinBias < -0.25f)
     {
+        ai->TellDebug(requester, std::string("Declining guild invite from ") + guild->GetName() + " due to poor fit bias " + std::to_string(guildJoinBias), "debug travel");
         ai->TellError(requester, "This guild does not feel like a good fit right now.");
 
         if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
@@ -78,6 +83,7 @@ bool GuildAcceptAction::Execute(Event& event)
     }
     else if (guild && guildJoinBias < 0.10f && urand(0, 99) < 45)
     {
+        ai->TellDebug(requester, std::string("Declining guild invite from ") + guild->GetName() + " due to weak social bias " + std::to_string(guildJoinBias), "debug travel");
         accept = false;
     }
 
@@ -95,10 +101,11 @@ bool GuildAcceptAction::Execute(Event& event)
         bot->GetSession()->HandleGuildAcceptOpcode(MakeNullPacket(packet));
 
         sServerSocialMgr.AddAffinity(bot->GetObjectGuid().GetRawValue(), inviter->GetObjectGuid().GetRawValue(), 0.12f,
-            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY);
+            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY, "guild_accept_inviter");
         sServerSocialMgr.AddAffinity(inviter->GetObjectGuid().GetRawValue(), bot->GetObjectGuid().GetRawValue(), 0.06f,
-            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY);
+            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY, "guild_accept_invitee");
         sServerSocialMgr.ObserveGuildArea(bot, sServerSocialMgr.NormalizeAreaId(bot), 1.8f);
+        ai->TellDebug(requester, std::string("Accepted guild invite to ") + guild->GetName() + " with social bias " + std::to_string(guildJoinBias), "debug travel");
 
         TalentSpec::SetPublicNote(bot);
 
@@ -107,6 +114,8 @@ bool GuildAcceptAction::Execute(Event& event)
     else
     {
         bot->GetSession()->HandleGuildDeclineOpcode(MakeNullPacket(packet));
+        if (guild)
+            ai->TellDebug(requester, std::string("Declined guild invite to ") + guild->GetName() + " with social bias " + std::to_string(guildJoinBias), "debug travel");
     }
     return true;
 }

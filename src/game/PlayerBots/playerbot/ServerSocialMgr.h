@@ -50,8 +50,8 @@ public:
     uint32 GetKnownContactCount(uint64 ownerGuid);
     bool HasHitListFlag(uint64 ownerGuid, uint64 targetGuid);
 
-    void AddAffinity(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags = SOCIAL_RELATIONSHIP_KNOWN);
-    void AddHostility(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags = SOCIAL_RELATIONSHIP_KNOWN);
+    void AddAffinity(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags = SOCIAL_RELATIONSHIP_KNOWN, std::string const& reason = "");
+    void AddHostility(uint64 ownerGuid, uint64 targetGuid, float delta, uint32 flags = SOCIAL_RELATIONSHIP_KNOWN, std::string const& reason = "");
     void ObserveMutualSocialContact(Player* owner, Player* target, bool sameGuild = false);
 
     GuildHubState GetGuildHubState(uint32 guildId);

@@ -1502,7 +1502,8 @@ void PlayerbotAI::OnDeath()
                 bot->GetObjectGuid().GetRawValue(),
                 enemyPlayer->GetObjectGuid().GetRawValue(),
                 0.20f,
-                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST,
+                "death_by_enemy_player");
 
             if (enemyPlayer->GetPlayerbotAI())
             {
@@ -1510,7 +1511,8 @@ void PlayerbotAI::OnDeath()
                     enemyPlayer->GetObjectGuid().GetRawValue(),
                     bot->GetObjectGuid().GetRawValue(),
                     0.08f,
-                    SOCIAL_RELATIONSHIP_RIVAL);
+                    SOCIAL_RELATIONSHIP_RIVAL,
+                    "finished_off_enemy");
             }
         }
 

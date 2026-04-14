@@ -18,6 +18,20 @@ using namespace ai;
 
 namespace
 {
+    struct SocialTargetBreakdown
+    {
+        float hubBonus = 0.0f;
+        float affinityBonus = 0.0f;
+        float hostilityPenalty = 0.0f;
+        float sameGuildBonus = 0.0f;
+        float cautiousPenalty = 0.0f;
+        float guildAreaBonus = 0.0f;
+        float archetypeBias = 1.0f;
+        float sessionMultiplier = 1.0f;
+        float committedMultiplier = 1.0f;
+        float finalBonus = 0.0f;
+    };
+
     float GetHubQuality(WorldObject* object)
     {
         Unit* unit = dynamic_cast<Unit*>(object);
@@ -39,14 +53,15 @@ namespace
         return score;
     }
 
-    float GetSocialTargetBonus(PlayerbotAI* ai, GuidPosition const& guidP)
+    SocialTargetBreakdown GetSocialTargetBreakdown(PlayerbotAI* ai, GuidPosition const& guidP)
     {
         Player* bot = ai ? ai->GetBot() : nullptr;
         if (!bot)
-            return 0.0f;
+            return {};
 
+        SocialTargetBreakdown breakdown;
         const ArchetypeWeights& weights = ai->GetArchetypeWeights();
-        const float archetypeBias = weights.curiosityWeight * (0.65f + (0.35f * weights.explorationRadiusBias));
+        breakdown.archetypeBias = weights.curiosityWeight * (0.65f + (0.35f * weights.explorationRadiusBias));
         const uint64 botGuid = bot->GetObjectGuid().GetRawValue();
         const uint32 areaId = sServerSocialMgr.NormalizeAreaId(bot);
 
@@ -58,39 +73,79 @@ namespace
         {
             Player* other = guidP.GetPlayer();
             if (!other)
-                return 0.0f;
+                return {};
 
             const uint64 otherGuid = other->GetObjectGuid().GetRawValue();
             const float affinity = sServerSocialMgr.GetAffinity(botGuid, otherGuid);
             const float hostility = sServerSocialMgr.GetHostility(botGuid, otherGuid);
-            bonus += affinity * 140.0f * archetypeBias;
-            bonus -= hostility * 220.0f;
+            breakdown.affinityBonus = affinity * 140.0f * breakdown.archetypeBias;
+            breakdown.hostilityPenalty = hostility * 220.0f;
+            bonus += breakdown.affinityBonus;
+            bonus -= breakdown.hostilityPenalty;
             if (bot->GetGuildId() && bot->GetGuildId() == other->GetGuildId())
-                bonus += 26.0f;
+            {
+                breakdown.sameGuildBonus = 26.0f;
+                bonus += breakdown.sameGuildBonus;
+            }
             if (sociallyCautious && affinity < 0.08f)
-                bonus -= 45.0f;
+            {
+                breakdown.cautiousPenalty = 45.0f;
+                bonus -= breakdown.cautiousPenalty;
+            }
         }
         else
         {
             WorldObject* object = guidP.GetWorldObject(bot->GetInstanceId());
-            bonus += GetHubQuality(object) * 85.0f * archetypeBias;
+            breakdown.hubBonus = GetHubQuality(object) * 85.0f * breakdown.archetypeBias;
+            bonus += breakdown.hubBonus;
             if (sociallyCautious)
-                bonus -= 18.0f;
+            {
+                breakdown.cautiousPenalty = 18.0f;
+                bonus -= breakdown.cautiousPenalty;
+            }
         }
 
         if (bot->GetGuildId())
-            bonus += sServerSocialMgr.GetGuildAreaAlignment(bot->GetGuildId(), areaId) * 35.0f;
+        {
+            breakdown.guildAreaBonus = sServerSocialMgr.GetGuildAreaAlignment(bot->GetGuildId(), areaId) * 35.0f;
+            bonus += breakdown.guildAreaBonus;
+        }
 
         BotSession const& session = ai->GetSession();
         if (session.state == SessionState::QUESTING || session.state == SessionState::MAINTENANCE)
-            bonus *= 0.45f;
+            breakdown.sessionMultiplier = 0.45f;
         else if (session.state == SessionState::IDLE || session.state == SessionState::TRAVELLING)
-            bonus *= 1.10f;
+            breakdown.sessionMultiplier = 1.10f;
 
         if (ai->GetCommittedTask().purpose != TravelDestinationPurpose::None)
-            bonus *= 0.60f;
+            breakdown.committedMultiplier = 0.60f;
 
-        return bonus;
+        breakdown.finalBonus = bonus * breakdown.sessionMultiplier * breakdown.committedMultiplier;
+        return breakdown;
+    }
+
+    float GetSocialTargetBonus(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        return GetSocialTargetBreakdown(ai, guidP).finalBonus;
+    }
+
+    std::string FormatSocialTargetBreakdown(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        SocialTargetBreakdown breakdown = GetSocialTargetBreakdown(ai, guidP);
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(2);
+        out << "social{final=" << breakdown.finalBonus
+            << ",hub=" << breakdown.hubBonus
+            << ",aff=" << breakdown.affinityBonus
+            << ",host=" << breakdown.hostilityPenalty
+            << ",guildmate=" << breakdown.sameGuildBonus
+            << ",cautious=" << breakdown.cautiousPenalty
+            << ",guild_area=" << breakdown.guildAreaBonus
+            << ",session_x" << breakdown.sessionMultiplier
+            << ",task_x" << breakdown.committedMultiplier
+            << ",arch_x" << breakdown.archetypeBias
+            << "}";
+        return out.str();
     }
 }
 
@@ -525,7 +580,7 @@ bool ChooseRpgTargetAction::Execute(Event& event)
             out << chat->formatWorldobject(guidP.GetWorldObject(bot->GetInstanceId()));
 
             out << std::fixed << std::setprecision(2);
-            out << " " << rgpActionReason[guidP] << " " << target.second;
+            out << " " << rgpActionReason[guidP] << " " << target.second << " " << FormatSocialTargetBreakdown(ai, guidP);
 
             ai->TellPlayerNoFacing(requester, out);
 
@@ -588,7 +643,7 @@ bool ChooseRpgTargetAction::Execute(Event& event)
         out << chat->formatWorldobject(guidP.GetWorldObject(bot->GetInstanceId()));
 
         out << std::fixed << std::setprecision(2);
-        out << " " << rgpActionReason[guidP] << " " << targets[guidP];
+        out << " " << rgpActionReason[guidP] << " " << targets[guidP] << " " << FormatSocialTargetBreakdown(ai, guidP);
 
         ai->TellPlayerNoFacing(requester, out);
     }

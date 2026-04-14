@@ -128,7 +128,10 @@ bool GuildManageNearbyAction::Execute(Event& event)
         PlayerbotAI* botAi = player->GetPlayerbotAI();
         const float guildJoinBias = sServerSocialMgr.GetGuildJoinBias(player, guild, bot->GetObjectGuid().GetRawValue());
         if (guildJoinBias < -0.15f)
+        {
+            ai->TellDebug(ai->GetMaster(), std::string("Skipping guild invite for ") + player->GetName() + " due to social bias " + std::to_string(guildJoinBias), "debug travel");
             continue;
+        }
 
         if (botAi)
         {            
@@ -264,7 +267,7 @@ bool GuildLeaveAction::Execute(Event& event)
     {
         const uint64 leaderGuid = guild->GetLeaderGuid().GetRawValue();
         if (leaderGuid)
-            sServerSocialMgr.AddHostility(bot->GetObjectGuid().GetRawValue(), leaderGuid, 0.04f, SOCIAL_RELATIONSHIP_RIVAL);
+            sServerSocialMgr.AddHostility(bot->GetObjectGuid().GetRawValue(), leaderGuid, 0.04f, SOCIAL_RELATIONSHIP_RIVAL, "guild_leave");
     }
 
     WorldPacket packet;
