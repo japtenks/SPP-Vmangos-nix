@@ -1769,6 +1769,8 @@ void PlayerbotAI::HandleTeleportAck()
 
 void PlayerbotAI::ResetMovementSessionState()
 {
+    AiObjectContext* context = aiObjectContext;
+
     RESET_AI_VALUE(LastMovement&, "last movement");
     RESET_AI_VALUE(LastMovement&, "last taxi");
     RESET_AI_VALUE(uint32, "last area trigger");
