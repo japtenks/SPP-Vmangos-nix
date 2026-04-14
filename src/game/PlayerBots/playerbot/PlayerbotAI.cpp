@@ -555,6 +555,15 @@ void PlayerbotAI::NormalizeFrameworkState()
 
 namespace
 {
+    std::string FormatCommittedTaskPurpose(TravelDestinationPurpose purpose)
+    {
+        auto itr = TravelDestinationPurposeName.find(purpose);
+        if (itr != TravelDestinationPurposeName.end())
+            return itr->second;
+
+        return "Unknown(" + std::to_string(static_cast<uint32>(purpose)) + ")";
+    }
+
     bool StartsWithActionCategory(const std::string& actionName, const std::string& prefix)
     {
         return actionName.size() >= prefix.size() && actionName.compare(0, prefix.size(), prefix) == 0;
@@ -1773,7 +1782,7 @@ void PlayerbotAI::ResetMovementSessionState()
 
     RESET_AI_VALUE(LastMovement&, "last movement");
     RESET_AI_VALUE(LastMovement&, "last taxi");
-    RESET_AI_VALUE(uint32, "last area trigger");
+    RESET_AI_VALUE(LastMovement&, "last area trigger");
 
     SetTransportState(TransportState::TRANSPORT_NONE);
     StopMoving();
@@ -2037,6 +2046,40 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
             bot->GetSession()->HandleLogoutCancelOpcode(p);
             SetShouldLogOut(false);
         }
+    }
+    else if (filtered == "debug commit")
+    {
+        const CommittedTask& task = GetCommittedTask();
+        const BotSession& session = GetSession();
+        const time_t now = time(nullptr);
+        const bool validNow = task.ValidateTarget(this, now, 0);
+
+        TellPlayer(&fromPlayer, "=== debug commit ===");
+        TellPlayer(&fromPlayer, "session=" + SessionStateToString(session.state) +
+            " paused=" + std::string(session.isPaused ? "yes" : "no") +
+            " purpose=" + FormatCommittedTaskPurpose(task.purpose));
+
+        if (task.purpose == TravelDestinationPurpose::None && !task.questId && !task.targetGuid && !task.destinationEntry)
+        {
+            TellPlayer(&fromPlayer, "No committed task.");
+            return;
+        }
+
+        Quest const* quest = task.questId ? sObjectMgr.GetQuestTemplate(task.questId) : nullptr;
+        std::string questLabel = task.questId ? std::to_string(task.questId) : "0";
+        if (quest)
+            questLabel += " [" + quest->GetTitle() + "]";
+
+        TellPlayer(&fromPlayer, "quest=" + questLabel +
+            " objective=" + std::to_string(static_cast<uint32>(task.objectiveIndex)) +
+            " entry=" + std::to_string(task.destinationEntry));
+        TellPlayer(&fromPlayer, "targetGuid=" + std::to_string(task.targetGuid.GetRawValue()) +
+            " retry=" + std::to_string(static_cast<uint32>(task.retryCount)) +
+            " valid=" + std::string(task.isValid ? "yes" : "no") +
+            " validNow=" + std::string(validNow ? "yes" : "no"));
+
+        if (task.failCooldownUntil > now)
+            TellPlayer(&fromPlayer, "failCooldownRemaining=" + std::to_string(static_cast<uint32>(task.failCooldownUntil - now)) + "s");
     }
     else if ((filtered.size() > 5) && (filtered.substr(0, 5) == "wait ") && (filtered.find("wait for attack") == std::string::npos))
     {

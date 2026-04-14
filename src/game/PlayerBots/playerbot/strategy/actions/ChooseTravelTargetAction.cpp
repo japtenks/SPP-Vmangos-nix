@@ -591,6 +591,19 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     if (hasValidCommittedTask && !committedTask.MatchesTarget(&newTarget))
     {
+        if (IsQuestPurpose(committedTask.purpose) && IsLowPriorityPurpose(newPurpose))
+        {
+            ai->TellDebug(requester, "Keeping committed quest task over low-priority target.", "debug travel");
+
+            if (committedTask.MatchesTarget(travelTarget) && travelTarget->GetDestination() && travelTarget->IsDestinationActive() && travelTarget->IsConditionsActive())
+            {
+                travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+                return false;
+            }
+
+            committedTask.Clear();
+        }
+
         if (IsQuestPurpose(committedTask.purpose) && IsMaintenancePurpose(newPurpose))
         {
             ai->TellDebug(requester, "Keeping committed quest task over maintenance target.", "debug travel");
