@@ -14,6 +14,30 @@ INSTANTIATE_SINGLETON_1(PlayerbotDbStore);
 
 using namespace ai;
 
+namespace
+{
+    bool IsControlFrameworkAliasKey(const std::string& key)
+    {
+        return key == "authority_mode" ||
+               key == "combat_profile" ||
+               key == "movement_profile" ||
+               key == "route_profile" ||
+               key == "reaction_profile" ||
+               key == "rtsc_overlay_active" ||
+               key == "rtsc_overlay_label" ||
+               key == "rtsc_overlay_anchor";
+    }
+
+    bool IsLegacyMovementKey(const std::string& key)
+    {
+        return key == "follow" ||
+               key == "guard" ||
+               key == "free" ||
+               key == "wander" ||
+               key == "rtsc";
+    }
+}
+
 void PlayerbotDbStore::Load(PlayerbotAI *ai, std::string preset)
 {
     uint64 guid = ai->GetBot()->GetObjectGuid().GetRawValue();
@@ -38,7 +62,8 @@ void PlayerbotDbStore::Load(PlayerbotAI *ai, std::string preset)
             else if (key == "nc") ai->ChangeStrategy(value, BotState::BOT_STATE_NON_COMBAT);
             else if (key == "dead") ai->ChangeStrategy(value, BotState::BOT_STATE_DEAD);
             else if (key == "react") ai->ChangeStrategy(value, BotState::BOT_STATE_REACTION);
-            else if (key.find("framework.") == 0) frameworkValues[key] = value;
+            else if (IsLegacyMovementKey(key)) ai->ChangeStrategy(value, BotState::BOT_STATE_NON_COMBAT);
+            else if (key.find("framework.") == 0 || IsControlFrameworkAliasKey(key)) frameworkValues[key] = value;
         } while (results->NextRow());
 
         ai->GetAiObjectContext()->Load(values);
@@ -60,7 +85,25 @@ void PlayerbotDbStore::Save(PlayerbotAI *ai, std::string preset)
     }
 
     for (const auto& [key, value] : ai->SaveFrameworkState())
+    {
         SaveValue(guid, preset, key, value);
+        if (key == "framework.authority_mode")
+            SaveValue(guid, preset, "authority_mode", value);
+        else if (key == "framework.combat_profile")
+            SaveValue(guid, preset, "combat_profile", value);
+        else if (key == "framework.movement_profile")
+            SaveValue(guid, preset, "movement_profile", value);
+        else if (key == "framework.route_profile")
+            SaveValue(guid, preset, "route_profile", value);
+        else if (key == "framework.reaction_profile")
+            SaveValue(guid, preset, "reaction_profile", value);
+        else if (key == "framework.rtsc_overlay_active")
+            SaveValue(guid, preset, "rtsc_overlay_active", value);
+        else if (key == "framework.rtsc_overlay_label")
+            SaveValue(guid, preset, "rtsc_overlay_label", value);
+        else if (key == "framework.rtsc_overlay_anchor")
+            SaveValue(guid, preset, "rtsc_overlay_anchor", value);
+    }
 
     std::string combatStrategies = FormatStrategies("co", ai->GetStrategies(BotState::BOT_STATE_COMBAT));
     if (!combatStrategies.empty())

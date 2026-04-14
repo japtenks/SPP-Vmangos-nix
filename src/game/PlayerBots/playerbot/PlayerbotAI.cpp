@@ -1,6 +1,8 @@
 #include "PlayerbotMgr.h"
 #include "Spells/SpellEntry.h"
 #include "playerbot/playerbot.h"
+#include <algorithm>
+#include <cctype>
 #include <stdarg.h>
 #include <iomanip>
 #include <random>
@@ -167,6 +169,39 @@ namespace
             return defaultValue;
 
         return itr->second == "1" || itr->second == "true";
+    }
+
+    std::string ParseStringWithAliasesOrDefault(const std::unordered_map<std::string, std::string>& values, const std::initializer_list<std::string>& keys, const std::string& defaultValue = "")
+    {
+        for (const std::string& key : keys)
+        {
+            auto itr = values.find(key);
+            if (itr != values.end() && !itr->second.empty())
+                return itr->second;
+        }
+
+        return defaultValue;
+    }
+
+    ControlAuthorityMode ControlAuthorityModeFromString(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), ::toupper);
+        if (value == "REFRESHED_WITH_OVERRIDE")
+            return ControlAuthorityMode::REFRESHED_WITH_OVERRIDE;
+
+        return ControlAuthorityMode::LEGACY_FULL;
+    }
+
+    std::string ControlAuthorityModeToString(ControlAuthorityMode mode)
+    {
+        switch (mode)
+        {
+            case ControlAuthorityMode::REFRESHED_WITH_OVERRIDE:
+                return "REFRESHED_WITH_OVERRIDE";
+            case ControlAuthorityMode::LEGACY_FULL:
+            default:
+                return "LEGACY_FULL";
+        }
     }
 }
 
@@ -426,6 +461,14 @@ std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState
 {
     return {
         {"framework.archetype", BotArchetypeToString(archetype)},
+        {"framework.authority_mode", ControlAuthorityModeToString(controlLaneState.authorityMode)},
+        {"framework.combat_profile", controlLaneState.combatProfile},
+        {"framework.movement_profile", controlLaneState.movementProfile},
+        {"framework.route_profile", controlLaneState.routeProfile},
+        {"framework.reaction_profile", controlLaneState.reactionProfile},
+        {"framework.rtsc_overlay_active", controlLaneState.rtscOverlayActive ? "1" : "0"},
+        {"framework.rtsc_overlay_label", controlLaneState.rtscOverlayLabel},
+        {"framework.rtsc_overlay_anchor", controlLaneState.rtscOverlayAnchor},
         {"framework.session_state", SessionStateToString(botSession.state)},
         {"framework.session_duration", std::to_string(botSession.plannedDuration)},
         {"framework.session_started", std::to_string(static_cast<uint32>(botSession.startedAt))},
@@ -453,6 +496,19 @@ void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::
         const BotArchetype loadedArchetype = BotArchetypeFromString(archetypeItr->second);
         ApplyArchetype(loadedArchetype, AiFactory::GetArchetypeWeights(loadedArchetype));
     }
+
+    controlLaneState.authorityMode = ControlAuthorityModeFromString(ParseStringWithAliasesOrDefault(
+        values,
+        { "framework.authority_mode", "authority_mode" },
+        ControlAuthorityModeToString(controlLaneState.authorityMode)
+    ));
+    controlLaneState.combatProfile = ParseStringWithAliasesOrDefault(values, { "framework.combat_profile", "combat_profile" }, controlLaneState.combatProfile);
+    controlLaneState.movementProfile = ParseStringWithAliasesOrDefault(values, { "framework.movement_profile", "movement_profile" }, controlLaneState.movementProfile);
+    controlLaneState.routeProfile = ParseStringWithAliasesOrDefault(values, { "framework.route_profile", "route_profile" }, controlLaneState.routeProfile);
+    controlLaneState.reactionProfile = ParseStringWithAliasesOrDefault(values, { "framework.reaction_profile", "reaction_profile" }, controlLaneState.reactionProfile);
+    controlLaneState.rtscOverlayActive = ParseBoolOrDefault(values, "framework.rtsc_overlay_active", ParseBoolOrDefault(values, "rtsc_overlay_active", controlLaneState.rtscOverlayActive));
+    controlLaneState.rtscOverlayLabel = ParseStringWithAliasesOrDefault(values, { "framework.rtsc_overlay_label", "rtsc_overlay_label" }, controlLaneState.rtscOverlayLabel);
+    controlLaneState.rtscOverlayAnchor = ParseStringWithAliasesOrDefault(values, { "framework.rtsc_overlay_anchor", "rtsc_overlay_anchor" }, controlLaneState.rtscOverlayAnchor);
 
     auto sessionItr = values.find("framework.session_state");
     if (sessionItr != values.end())
@@ -486,6 +542,15 @@ void PlayerbotAI::NormalizeFrameworkState()
 
     if (botSession.state != SessionState::IDLE && committedTask.purpose == TravelDestinationPurpose::None)
         botSession.Reset(SessionState::IDLE);
+
+    if (controlLaneState.combatProfile.empty())
+        controlLaneState.combatProfile = "custom";
+    if (controlLaneState.movementProfile.empty())
+        controlLaneState.movementProfile = "custom";
+    if (controlLaneState.routeProfile.empty())
+        controlLaneState.routeProfile = "custom";
+    if (controlLaneState.reactionProfile.empty())
+        controlLaneState.reactionProfile = "standard";
 }
 
 namespace
@@ -567,6 +632,9 @@ bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotSta
     if (botSession.isPaused)
         return true;
 
+    if (UsesRefreshedControlAuthority() && HasActiveRtscOverlay() && IsTravelFrameworkAction(actionName))
+        return false;
+
     if (IsTravelFrameworkAction(actionName) || IsRecoveryAction(actionName))
         return true;
 
@@ -606,6 +674,14 @@ bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotSta
     }
 
     return true;
+}
+
+bool PlayerbotAI::HasActiveRtscOverlay() const
+{
+    return controlLaneState.rtscOverlayActive ||
+           HasStrategy("rtsc", BotState::BOT_STATE_NON_COMBAT) ||
+           HasStrategy("rtsc", BotState::BOT_STATE_COMBAT) ||
+           HasStrategy("rtsc", BotState::BOT_STATE_REACTION);
 }
 
 void PlayerbotAI::OpenMaintenanceBreakpoint(const std::string& reason, uint32 durationSeconds)

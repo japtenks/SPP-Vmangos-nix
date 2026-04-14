@@ -99,6 +99,24 @@ enum ImportantAreaId
     CITY = 3459
 };
 
+enum class ControlAuthorityMode
+{
+    LEGACY_FULL,
+    REFRESHED_WITH_OVERRIDE
+};
+
+struct ControlLaneState
+{
+    ControlAuthorityMode authorityMode = ControlAuthorityMode::LEGACY_FULL;
+    std::string combatProfile = "custom";
+    std::string movementProfile = "custom";
+    std::string routeProfile = "custom";
+    std::string reactionProfile = "standard";
+    bool rtscOverlayActive = false;
+    std::string rtscOverlayLabel;
+    std::string rtscOverlayAnchor;
+};
+
 // ChatChannelId is defined as a namespace in VmangosCompat.h
 
 enum ChatChannelSource
@@ -702,6 +720,10 @@ public:
     std::vector<std::pair<std::string, std::string>> SaveFrameworkState() const;
     void LoadFrameworkState(const std::unordered_map<std::string, std::string>& values);
     void NormalizeFrameworkState();
+    const ControlLaneState& GetControlLaneState() const { return controlLaneState; }
+    bool UsesLegacyControlAuthority() const { return controlLaneState.authorityMode == ControlAuthorityMode::LEGACY_FULL; }
+    bool UsesRefreshedControlAuthority() const { return controlLaneState.authorityMode == ControlAuthorityMode::REFRESHED_WITH_OVERRIDE; }
+    bool HasActiveRtscOverlay() const;
 
 #ifdef BUILD_ELUNA
     MaNGOS::unique_weak_ptr<PlayerbotAI> GetWeakPtr() const { return m_weakRef; }
@@ -752,6 +774,7 @@ protected:
     BotSession botSession = {};
     CommittedTask committedTask = {};
     std::unordered_map<uint32, time_t> questLogTimestamps = {};
+    ControlLaneState controlLaneState = {};
     bool m_recordMessages = false;
     std::vector<std::string> m_recordedMessages;
     Event lastEvent;
