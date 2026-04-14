@@ -234,6 +234,18 @@ bool HighThreatTrigger::IsActive()
     return false;
 }
 
+bool QuestReadyToTurnInTrigger::IsActive()
+{
+    const QuestStatusMap& questStatusMap = bot->GetQuestStatusMap();
+    for (const auto& [questId, status] : questStatusMap)
+    {
+        if (status.m_status == QUEST_STATUS_COMPLETE && !bot->GetQuestRewardStatus(questId))
+            return true;
+    }
+
+    return false;
+}
+
 bool MediumThreatTrigger::IsActive()
 {
     if (AI_VALUE2(uint8, "threat", "current target") >= 60)

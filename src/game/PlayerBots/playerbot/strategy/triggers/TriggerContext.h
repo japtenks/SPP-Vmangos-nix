@@ -120,6 +120,7 @@ namespace ai
             creators["combo points available"] = [](PlayerbotAI* ai) { return new ComboPointsAvailableTrigger(ai); };
             creators["multiple attackers"] = [](PlayerbotAI* ai) { return new MultipleAttackersTrigger(ai); };
             creators["high threat"] = [](PlayerbotAI* ai) { return new HighThreatTrigger(ai); };
+            creators["quest ready to turn in"] = [](PlayerbotAI* ai) { return new QuestReadyToTurnInTrigger(ai); };
             creators["medium threat"] = [](PlayerbotAI* ai) { return new MediumThreatTrigger(ai); };
             creators["some threat"] = [](PlayerbotAI* ai) { return new SomeThreatTrigger(ai); };
             creators["no threat"] = [](PlayerbotAI* ai) { return new NoThreatTrigger(ai); };

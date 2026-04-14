@@ -236,6 +236,13 @@ namespace ai
         virtual bool IsActive() override;
     };
 
+    class QuestReadyToTurnInTrigger : public Trigger
+    {
+    public:
+        QuestReadyToTurnInTrigger(PlayerbotAI* ai) : Trigger(ai, "quest ready to turn in", 5) {}
+        virtual bool IsActive() override;
+    };
+
     class MediumThreatTrigger : public Trigger
     {
     public:
