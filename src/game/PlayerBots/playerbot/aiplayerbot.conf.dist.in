@@ -5,8 +5,38 @@
 [AiPlayerbotConf]
 ConfVersion=2020072501
 
+###################################################################################################
+# RESET / CLEANUP
+#
+# One-shot cleanup flags. Set a flag to 1 for the next restart only, then return it to 0.
+###################################################################################################
+
+# Delete all random bot accounts and characters (full reset)
+AiPlayerbot.DeleteRandomBotAccounts = 0
+
+# Delete all random bot guilds
+AiPlayerbot.DeleteRandomBotGuilds = 0
+
+# Delete all random bot arena teams
+AiPlayerbot.DeleteRandomBotArenaTeams = 0
+
+###################################################################################################
+# CORE / STARTUP
+#
+# Master switches and startup behavior.
+###################################################################################################
+
 # Enable or disable AI Playerbot
 AiPlayerbot.Enabled = 1
+
+# Show progress bars for random bots
+AiPlayerbot.ShowProgressBars = 1
+
+# Disable automatic DBStore save (1 = manual/explicit saves only)
+AiPlayerbot.ExplicitDbStoreSave = 0
+
+# Create random bot accounts and characters automatically
+AiPlayerbot.RandomBotAutoCreate = 1
 
 # Enable random bot system
 AiPlayerbot.RandomBotAutologin = 1
@@ -14,167 +44,180 @@ AiPlayerbot.RandomBotAutologin = 1
 # Log on all random bots on start
 AiPlayerbot.RandomBotLoginAtStartup = 1
 
-# Disable automatic DBStore save
-AiPlayerbot.ExplicitDbStoreSave = 0
+# Auto-login all player alts as bots on player login
+AiPlayerbot.BotAutologin = 0
+
+# The summon command can be used without restriction by non-gms
+# AiPlayerbot.NonGmFreeSummon = 0
+
+# Show helmet and cloak on randombots (reset required)
+AiPlayerbot.RandomBotShowHelmet = 1
+AiPlayerbot.RandomBotShowCloak = 1
+
+###################################################################################################
+# POPULATION / LIFECYCLE
+#
+# Online counts, level policy, session timing, and account pool sizing.
+###################################################################################################
 
 # Log out random bots after BotInWorldTime interval
 # AiPlayerbot.RandomBotTimedLogout = 1
 
-# Keep random bots logged out for an BotInWorldTime interval
+# Keep random bots logged out for a BotInWorldTime interval
 # AiPlayerbot.RandomBotTimedOffline = 0
 
-# Login Bots when real players login
+# Login bots when real players login
 # AiPlayerbot.RandomBotLoginWithPlayer = 0
-
-# Delete all random bot accounts (reset randombots)
-AiPlayerbot.DeleteRandomBotAccounts = 0
-
-# auto-login all player alts as bots on player login
-AiPlayerbot.BotAutologin = 0
-
-# Enable LFG for random bots
-AiPlayerbot.RandomBotJoinLfg = 1
-
-# Enable BG/Arena for random Bots
-AiPlayerbot.RandomBotJoinBG = 1
-
-# Enable Auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
-AiPlayerbot.RandomBotAutoJoinBG = 0
-
-# Mark many quests <= Bot level as complete (slows down bot creation)
-AiPlayerbot.PreQuests = 0
-
-# Create random bot accounts and characters automaticallylly
-AiPlayerbot.RandomBotAutoCreate = 1
 
 # Random bot count
 AiPlayerbot.MinRandomBots = 1000
 AiPlayerbot.MaxRandomBots = 1000
+
+# Bot level bounds
 AiPlayerbot.RandomBotMinLevel = 1
 AiPlayerbot.RandomBotMaxLevel = 60
+
+# Chance random bot has max level on first randomize
+AiPlayerbot.RandomBotMaxLevelChance = 0.15
 
 # Accounts to create for random bots
 AiPlayerbot.RandomBotAccountPrefix = RNDBOT
 AiPlayerbot.RandomBotAccountCount = 200
 
-# Disable core mangos map/bot optimizations which hinders bot activity
-# Works best together with AiPlayerbot.DisableActivityPriorities = 1
-# (0-1), default 0
+# Disable random levels for randombots.
+# When enabled, every bot starts at the specified level and levels by playing.
+AiPlayerbot.DisableRandomLevels = 0
+
+# Set randombots starting level here if DisableRandomLevels is enabled
+# Recommended: 5+
+# AiPlayerbot.randombotStartingLevel = 5
+
+# Set XP rate for bots
+# Server XP Rate * AiPlayerbot.XPRate
+# AiPlayerbot.XPRate = 1
+
+# Mark many quests <= bot level as complete (slows down bot creation)
+AiPlayerbot.PreQuests = 0
+
+###################################################################################################
+# PERFORMANCE / ACTIVITY
+#
+# Control how active bots stay when no players are nearby, and how aggressively they update.
+###################################################################################################
+
+# Disable core mangos map/bot optimizations which hinder bot activity.
+# Works best together with DisableActivityPriorities = 1.
 # AiPlayerbot.DisableBotOptimizations = 0
 
-# Disable bot activity priorities, to make all bots ACTUALLY active without player in the zones or server (unless AiPlayerbot.DisableBotOptimizations = 0)
-# This setting is added for the sake of having all bots always active regardless of anything
-# With this enabled, if you get lags - then you need to reduce amount of online bots, rather than relying on optimizations
-# This will ingore the AiPlayerbot.botActiveAlone setting, all bots will be active regardless
-# Works best together with AiPlayerbot.DisableBotOptimizations = 1
-# (0-1), default 0
+# Disable bot activity priorities, making online bots stay fully active regardless of nearby players.
 # AiPlayerbot.DisableActivityPriorities = 0
 
 # Force bots to become active when a player is nearby
-#AiPlayerbot.ForceActiveWhenNearPlayer = 0
+# AiPlayerbot.ForceActiveWhenNearPlayer = 0
 
 # Force bots to become active when guild orders are enabled
-#AiPlayerbot.GuildOrderAlwaysActive = 1
+# AiPlayerbot.GuildOrderAlwaysActive = 1
 
-# Limit combat activity for slight performance boost.
-#AiPlayerbot.LimitCombatActivity = 0
+# Limit combat activity for slight performance boost
+# AiPlayerbot.LimitCombatActivity = 0
 
-# Percentage of fully active bots. Default is 10, higher numbers may affect performance
+# Percentage of fully active bots when activity priorities are enabled
 # AiPlayerbot.botActiveAlone = 10
 
-# Limit random bot max level to online players max level + 5 and uses reference level 1 without a player.
+# Limit random bot max level to online players max level + 5 and use reference level 1 without a player
 # AiPlayerbot.SyncLevelWithPlayers = 0
 # AiPlayerbot.SyncLevelMaxAbove = 5
 # AiPlayerbot.SyncLevelNoPlayer = 1
 
+###################################################################################################
+# SOCIAL / GROUPING
+#
+# Player invites, grouping, guilds, PvP queues, and social visibility.
+###################################################################################################
+
+# Enable LFG for random bots
+AiPlayerbot.RandomBotJoinLfg = 1
+
+# Enable BG/Arena for random bots
+AiPlayerbot.RandomBotJoinBG = 1
+
+# Enable auto join BG - bots randomly join WSG and 2v2 Arena if server is not lagging
+AiPlayerbot.RandomBotAutoJoinBG = 0
+
 # Random bot guild count
 AiPlayerbot.RandomBotGuildCount = 20
-
-# Delete all random bot guilds
-AiPlayerbot.DeleteRandomBotGuilds = 0
 
 # Random bot arena team count
 AiPlayerbot.RandomBotArenaTeamCount = 20
 
-# Delete all random bot arena teams
-AiPlayerbot.DeleteRandomBotArenaTeams = 0
+# Randombots will invite players to groups/raids/guilds
+# AiPlayerbot.RandomBotInvitePlayer = 1
+
+# Randombots will invite nearby bots to groups/raids/guilds
+# AiPlayerbot.RandomBotGroupNearby = 1
+# AiPlayerbot.RandomBotRaidNearby = 1
+# AiPlayerbot.RandomBotGuildNearby = 1
+
+# Randombots will form guilds by buying a charter, getting signatures and handing it in
+# AiPlayerbot.RandomBotFormGuild = 1
+
+# Bots will chat in say/guild when they invite other bots to groups/raids/guilds
+# AiPlayerbot.InviteChat = 1
+
+# Bots will put their talent spec in guild notes when they have the rights
+# AiPlayerbot.TalentsInPublicNote = 0
+
+# Max limit of members in a guild before bots leave
+# AiPlayerbot.guildMaxBotLimit = 1000
+
+# Minimum level at which bots will start accepting duels
+# AiPlayerbot.BotAcceptDuelMinimumLevel = 10
+
+# Bots greet players
+AiPlayerbot.EnableGreet = 1
+
+###################################################################################################
+# WORLD / MOVEMENT / RPG
+#
+# Teleports, transports, and world-RPG behavior.
+###################################################################################################
 
 # Maps to teleport random bots
 AiPlayerbot.RandomBotMaps = 0,1,530,571
 
-# Min and max intervals for random teleports, in seconds (default: 2hrs and 48hrs)
+# Min and max intervals for random teleports, in seconds
 AiPlayerbot.RandomBotTeleportTeleportMinInterval = 7200
 AiPlayerbot.RandomBotTeleportTeleportMaxInterval = 172800
 
-# Change random bot has lower gear
-AiPlayerbot.RandomGearLoweringChance = 0.15
-
-# Max item level of random equipment
-# Classic
-# Max iLVL Tier 1 = 66 | Tier 2 = 76 | Tier 2.5 = 81 | Tier 3 = 99
-# Max iLVL Phase 1 = 71(MC, ONY, ZG) | Phase 2(BWL) = 77 | Phase 2.5(AQ) = 88 | Phase 3(NAXX) = 100 (NOT RECOMMENDED SINCE ILVL OVERLAPS BETWEEN TIERS)
-AiPlayerbot.RandomGearMaxLevel = 500
-
-# Max difference between bot level and item's required level to be used in randomisation
-# Default = 9, means bots level 60 can use items that require (themselves or via quests) level 51 and above
-AiPlayerbot.RandomGearMaxDiff = 9
-
-# Regularly upgrade bots equipment for their level
-AiPlayerbot.RandomGearUpgradeEnabled = 0
-
-# Enable random tabards on randomisation
-AiPlayerbot.RandomGearTabards = 0
-
-# Chance to get a random tabard
-AiPlayerbot.RandomGearTabardsChance = 0.1
-
-# Replace guild tabard with random one
-AiPlayerbot.RandomGearTabardsReplaceGuild = 0
-
-# Allow use tabards that have no vendors, quests or loot related to it
-AiPlayerbot.RandomGearTabardsUnobtainable = 0
-
-# List of item IDs to exclude from random gear, separated by comma
-AiPlayerbot.RandomGearBlacklist = 0
-
-# Roll need on items if slot is empty or broken, even if not appropriate for bot's spec
-# Bots without real player master ignore this config and always roll need in that case
-# 1 - roll need on such items
-# 0 - roll greed on such items (Default)
-AiPlayerbot.RollBadItemsWithPlayer = 0
-
-# Chance random bot has max level on first randomize (default 0.15)
-AiPlayerbot.RandomBotMaxLevelChance = 0.15
-
-# Chance bot chooses RPG (Teleport to random camp for their level) instead of grinding
-AiPlayerbot.RandomBotRpgChance = 0.20
-
-# Random bots teleport to zones around real player if level is appropriate
+# Random bots teleport to zones around real players if level is appropriate
 # AiPlayerbot.RandomBotTeleportNearPlayer = 0
 
-# Limit how many random bots teleport to points in zones around real player
+# Limit how many random bots teleport to points in zones around real players
 # AiPlayerbot.RandomBotTeleportNearPlayerMaxAmount = 0
 
-# Limit whithin what distance between other bots they teleport to points in zones around real player
+# Limit the distance between other bots when teleporting near players
 # AiPlayerbot.RandomBotTeleportNearPlayerMaxAmountRadius = 0
 
-# Bot transport use style: 0 = walk on transports (currently not available), 1 = teleport on transports and ride it, 2 = teleport from dock to dock bypassing transport.
+# Chance bot chooses RPG (teleport to random camp for their level) instead of grinding
+AiPlayerbot.RandomBotRpgChance = 0.20
+
+# Bot transport use style:
+# 0 = walk on transports (currently not available)
+# 1 = teleport on transports and ride it
+# 2 = teleport from dock to dock bypassing transport
 # AiPlayerbot.TransportTeleportType = 2
 
 # Chance for bot to use potions
-#AiPlayerbot.UsePotionChance = 1.0
+# AiPlayerbot.UsePotionChance = 1.0
 
-# Bots will speed up when following to stay close.
+# Bots will speed up when following to stay close
 # AiPlayerbot.BoostFollow = 1
 
-# Bots and npcs turn to eachother during an rpg interaction
+# Bots and NPCs turn to each other during an RPG interaction
 AiPlayerbot.TurnInRpg = 0
 
-# Bots will make sounds when repairing, selling items ect.
+# Bots will make sounds when repairing, selling items, etc.
 AiPlayerbot.GlobalSoundEffects = 0
-
-# Show progress bars for random bots (disabled by default)
-AiPlayerbot.ShowProgressBars = 1
 
 # Set randombots movement speed to walking anywhere
 AiPlayerbot.RandombotsWalkingRPG = 0
@@ -182,65 +225,102 @@ AiPlayerbot.RandombotsWalkingRPG = 0
 # Set randombots movement speed to walking only inside buildings
 AiPlayerbot.RandombotsWalkingRPG.InDoors = 0
 
-# Bots greet to the players
-AiPlayerbot.EnableGreet = 1
+###################################################################################################
+# GEAR / AUTOMATION
+#
+# Keep one gear path active: loot upgrades on, old progression and lowering off by default.
+###################################################################################################
 
-# Show helmet and cloak on randombots (reset required)
-AiPlayerbot.RandomBotShowHelmet = 1
-AiPlayerbot.RandomBotShowCloak = 1
+# Allow random bots to intentionally roll lower gear than their normal baseline
+AiPlayerbot.RandomGearLoweringChance = 0
 
-# Disable random levels for randombots
-# Every bots started on the specified level and level up by killing mobs.
-AiPlayerbot.DisableRandomLevels = 0
+# Max item level of random equipment
+# Classic reference:
+# Tier 1 = 66 | Tier 2 = 76 | Tier 2.5 = 81 | Tier 3 = 99
+# Phase 1 = 71 (MC/ONY/ZG) | Phase 2 = 77 (BWL) | Phase 2.5 = 88 (AQ) | Phase 3 = 100 (NAXX)
+AiPlayerbot.RandomGearMaxLevel = 500
 
-# Set randombots starting level here if "AiPlayerbot.DisableRandomLevels" enabled
-# Recommended: 5+
-#AiPlayerbot.randombotStartingLevel = 5
+# Max difference between bot level and an item's required level to be used in randomisation
+AiPlayerbot.RandomGearMaxDiff = 9
 
-# Set XP rate for bots (default: 1)
-# Server XP Rate * AiPlayerbot.XPRate
-# AiPlayerbot.XPRate = 1
+# Regularly upgrade bots equipment for their level
+AiPlayerbot.RandomGearUpgradeEnabled = 0
 
-# Set minimum level of randombots where gets enchants on items (Maxlevel + 1 to disable)
-# Default: 60
+# Progress bot gear through the older random gear progression pipeline
+AiPlayerbot.RandomGearProgression = 0
+
+# Enable random tabards on randomisation
+AiPlayerbot.RandomGearTabards = 0
+AiPlayerbot.RandomGearTabardsChance = 0.1
+AiPlayerbot.RandomGearTabardsReplaceGuild = 0
+AiPlayerbot.RandomGearTabardsUnobtainable = 0
+
+# List of item IDs to exclude from random gear, separated by comma
+AiPlayerbot.RandomGearBlacklist = 0
+
+# Roll need on items if slot is empty or broken, even if not appropriate for bot's spec
+# Bots without a real player master ignore this config and always roll need in that case
+AiPlayerbot.RollBadItemsWithPlayer = 0
+
+# Set minimum level of randombots where they get enchants on items (MaxLevel + 1 to disable)
 AiPlayerbot.minEnchantingBotLevel = 81
 
-# Randombots checking players gear score level and deny the group invite if it's too low
-# Default: 0 (disabled)
+# Bots pick their quest reward
+# yes = pick first useful item
+# no = list all rewards
+# ask = pick useful item and list if multiple
+AiPlayerbot.AutoPickReward = yes
+
+# Bots equip upgrades obtained from loot or quest rewards
+AiPlayerbot.AutoEquipUpgradeLoot = 1
+
+# Bot automatically trains spells when talking to trainer
+# yes = train all available spells while the bot has the money
+# free = auto train with no money cost
+# no = only list spells
+AiPlayerbot.AutoTrainSpells = yes
+
+# Bot automatically picks talent points based on current spec
+# full = pick spec based on probability if multiple are similar
+# semi = only apply points if one spec clearly matches
+# no = no auto talent points
+AiPlayerbot.AutoPickTalents = full
+
+# Bots automatically learn trainable spells on levelup
+AiPlayerbot.AutoLearnTrainerSpells = 0
+
+# Bots automatically learn class quest reward spells on levelup
+AiPlayerbot.AutoLearnQuestSpells = 0
+
+# Alt bots automatically learn class spells from dropped books when eligible
+AiPlayerbot.AutoLearnDroppedSpells = 0
+
+# Sync quests with player
+AiPlayerbot.SyncQuestWithPlayer = 0
+
+# Random bots will pick quests on their own and try to complete them
+# AiPlayerbot.AutoDoQuests = 1
+
+# Random bots will also move to destinations when not seen by players
+# AiPlayerbot.EnableMinimalMove = 1
+
+###################################################################################################
+# POLICY / SAFETY
+#
+# Lightweight checks that shape group acceptance and spell immunity behavior.
+###################################################################################################
+
+# Randombots check players' gear score level and deny group invites if it is too low
 AiPlayerbot.GearScoreCheck = 0
 
-# Randombots checking players level difference and deny the group invite if it's too low
-# Default: 30
+# Randombots check players' level difference and deny group invites if it is too low
 AiPlayerbot.LevelCheck = 30
 
 # Spells that won't affect bots
 AiPlayerbot.ImmuneSpellIds = 19428
 
-# Quest that will be completed and rewarded to all random bots
+# Quest IDs that will be completed and rewarded to all random bots
 AiPlayerbot.RandomBotQuestIds = 7848,3802,5505,6502,7761,9378
-
-# Randombots will invite players to groups/raids/guilds. (This can also be disabled by turning on DnD on your character)
-# AiPlayerbot.RandomBotInvitePlayer = 1 
-
-# Randombots will invite nearby bots to groups/raids/guilds
-# AiPlayerbot.RandomBotGroupNearby = 1
-# AiPlayerbot.RandomBotRaidNearby = 1
-# AiPlayerbot.RandomBotGuildNearby = 1
-
-# Randombots will form guilds by buying a charter, getting signatures and handing it in.
-# AiPlayerbot.RandomBotFormGuild = 1
-
-# Bots will chat in say/guild when they invite other bots to groups/raids/guilds
-# AiPlayerbot.InviteChat = 1
-
-# The summon command can be used without restriction by non-gms.
-# AiPlayerbot.NonGmFreeSummon = 0
-
-# Bots will put their talentspec in guild notes when they change/tell their talents if they have the rights.
-# AiPlayerbot.TalentsInPublicNote = 0
-
-#max limit of members in a guild (bots will leave guild if there are more members than this number)
-# AiPlayerbot.guildMaxBotLimit = 1000
 
 ##################################################################################
 #
@@ -341,37 +421,6 @@ AiPlayerbot.RandomBotQuestIds = 7848,3802,5505,6502,7761,9378
 # AiPlayerbot.RespawnModMax = 18          # After the threshold it will decrease the respawn for up to 18 nearby players max.
 # AiPlayerbot.RespawnModForPlayerBots = 0 # Bots with a player master are not affected.
 # AiPlayerbot.RespawnModForInstances = 0  # Mobs inside instances are not affected.
-
-# Automation
-
-# Bots pick their quest reward (yes = picks first useful item, no = list all rewards, ask = pick useful item and lists if multiple)
-AiPlayerbot.AutoPickReward = yes
-
-# Bots equip upgrades (Bots will equip any item obtained from looting or a quest if they are upgrades)
-# Default: 0 (disabled)
-AiPlayerbot.AutoEquipUpgradeLoot = 1
-
-# Sync quests with player (Bots will complete quests the moment you hand them in. Bots will ignore looting quest items.)
-# Default: 0 (disabled)
-AiPlayerbot.SyncQuestWithPlayer = 0
-
-# Bot automatically trains spells when talking to trainer (yes = train all available spells as long as the bot has the money, free = auto trains with no money cost, no = only list spells)
-AiPlayerbot.AutoTrainSpells = yes
-
-# Bot automatically picks talent points based on current spec (full = pick spec based on probability if multiple are like current spec, semi = only apply points if 1 spec looks like current spec, no = no auto talent points)
-AiPlayerbot.AutoPickTalents = full
-
-# Bots automatically learn trainable spells on levelup
-# Default: 0 (disabled)
-AiPlayerbot.AutoLearnTrainerSpells = 0
-
-# Bots automatically learn classquest reward spells on levelup
-# Default: 0 (disabled)
-AiPlayerbot.AutoLearnQuestSpells = 0
-
-# Alt Bots automatically learn class spells from books dropped from dungeons and raids when leveled and they reached the required level of the book.
-# Default: 0 (disabled)
-AiPlayerbot.AutoLearnDroppedSpells = 0
 
 # Random Bots will pick quests on their own and try to complete
 # Default: 1 (enabled)
