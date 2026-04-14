@@ -284,6 +284,7 @@ PlayerbotAI::PlayerbotAI(Player* bot) :
     aiObjectContext = AiFactory::createAiObjectContext(bot, this);
     const BotArchetype assignedArchetype = AiFactory::AssignArchetype(bot);
     ApplyArchetype(assignedArchetype, AiFactory::GetArchetypeWeights(assignedArchetype));
+    controlLaneState.authorityMode = ControlAuthorityModeFromString(sPlayerbotAIConfig.defaultControlAuthorityMode);
     botSession.Reset(SessionState::IDLE);
     committedTask.Clear();
 

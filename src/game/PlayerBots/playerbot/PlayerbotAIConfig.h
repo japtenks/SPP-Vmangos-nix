@@ -193,6 +193,7 @@ public:
     bool summonAtInnkeepersEnabled;
     std::string combatStrategies, nonCombatStrategies, reactStrategies, deadStrategies;
     std::string randomBotCombatStrategies, randomBotNonCombatStrategies, randomBotReactStrategies, randomBotDeadStrategies;
+    std::string defaultControlAuthorityMode;
     uint32 randomBotMinLevel, randomBotMaxLevel;
     float randomChangeMultiplier;
     uint32 specProbability[MAX_CLASSES][10];

@@ -205,6 +205,11 @@ AiPlayerbot.RandomBotTeleportMaxInterval = 172800
 # Chance bot chooses RPG (teleport to random camp for their level) instead of grinding
 AiPlayerbot.RandomBotRpgChance = 0.20
 
+# Default non-combat control authority for newly initialized bot framework state.
+# LEGACY_FULL keeps classic playerbot travel/control behavior.
+# REFRESHED_WITH_OVERRIDE enables the refreshed control lane and lets RTSC overlays suppress framework travel actions.
+AiPlayerbot.DefaultControlAuthorityMode = REFRESHED_WITH_OVERRIDE
+
 # Bot transport use style:
 # 0 = legacy walk-on mode (currently not available)
 # 1 = teleport onto the transport and ride it
