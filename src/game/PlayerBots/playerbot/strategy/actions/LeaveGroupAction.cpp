@@ -4,6 +4,23 @@
 
 namespace ai
 {
+    namespace
+    {
+        bool RollArchetypeChance(PlayerbotAI* ai, float chance)
+        {
+            if (!ai)
+                return false;
+
+            if (chance <= 0.0f)
+                return false;
+
+            if (chance >= 1.0f)
+                return true;
+
+            return frand(0.0f, 1.0f) <= chance;
+        }
+    }
+
 	bool LeaveGroupAction::Leave(Player* player) 
     {
         if (!player)
@@ -103,7 +120,7 @@ namespace ai
             return true;
 
         if (MEM_AI_VALUE(uint32, "experience")->LastChangeDelay() > 15 * MINUTE && MEM_AI_VALUE(uint32, "honor")->LastChangeDelay() > 15 * MINUTE)
-            return true;
+            return RollArchetypeChance(ai, ai->GetArchetypeWeights().groupLeaveChance);
 
         return false;
     }

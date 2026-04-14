@@ -7,6 +7,23 @@
 
 namespace ai
 {
+    namespace
+    {
+        bool RollArchetypeChance(PlayerbotAI* ai, float chance)
+        {
+            if (!ai)
+                return false;
+
+            if (chance <= 0.0f)
+                return false;
+
+            if (chance >= 1.0f)
+                return true;
+
+            return frand(0.0f, 1.0f) <= chance;
+        }
+    }
+
     bool InviteToGroupAction::Invite(Player* inviter, Player* player)
     {
         if (!player)
@@ -369,6 +386,9 @@ namespace ai
 
         if (ai->HasActivePlayerMaster()) //Alts do not invite randomly
            return false;
+
+        if (!RollArchetypeChance(ai, ai->GetArchetypeWeights().groupJoinChance))
+            return false;
 
         return true;
     }

@@ -48,6 +48,7 @@ namespace ai
             float value = sPlayerbotAIConfig.lowHealth, float minValue = sPlayerbotAIConfig.criticalHealth) :
             HealthInRangeTrigger(ai, name, value, minValue) {}
 
+        bool IsActive() override;
 		virtual std::string GetTargetName() override { return "self target"; }
     };
 

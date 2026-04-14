@@ -11,6 +11,7 @@
 #include "playerbot/strategy/values/GuildValues.h"
 #include "GuildMgr.h"
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 
 using namespace ai;
@@ -97,6 +98,48 @@ namespace
             default:
                 return false;
         }
+    }
+
+    float GetQuestArchetypePriorityMultiplier(Player* bot, PlayerbotAI* ai, TravelDestinationPurpose purpose, const Quest* quest)
+    {
+        if (!bot || !ai)
+            return 1.0f;
+
+        const ArchetypeWeights& weights = ai->GetArchetypeWeights();
+        float multiplier = 1.0f;
+
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::QuestGiver:
+                multiplier *= weights.chainWeight;
+                break;
+            case TravelDestinationPurpose::QuestObjective1:
+            case TravelDestinationPurpose::QuestObjective2:
+            case TravelDestinationPurpose::QuestObjective3:
+            case TravelDestinationPurpose::QuestObjective4:
+                multiplier *= weights.progressWeight;
+                break;
+            case TravelDestinationPurpose::QuestTaker:
+                multiplier *= (weights.progressWeight + weights.chainWeight) * 0.5f;
+                break;
+            default:
+                break;
+        }
+
+        if (quest)
+        {
+            const int32 questLevel = std::max<int32>(quest->GetQuestLevel(), quest->GetMinLevel());
+            const float levelDelta = std::fabs(float(bot->GetLevel()) - float(questLevel));
+            multiplier *= std::max(0.25f, weights.levelWeight - (levelDelta * 0.03f));
+
+            if (quest->GetZoneOrSort() > 0)
+                multiplier *= weights.zoneWeight;
+
+            if (quest->GetNextQuestId() || quest->GetNextQuestInChain())
+                multiplier *= weights.chainWeight;
+        }
+
+        return std::max(0.25f, multiplier);
     }
 
     bool IsMaintenancePurpose(TravelDestinationPurpose purpose)
@@ -2033,10 +2076,13 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     const EntryQuestRelationMap relationMap = AI_VALUE_SAFE(EntryQuestRelationMap, "entry quest relation");
+    const ArchetypeWeights& weights = ai->GetArchetypeWeights();
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
-    std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0, static_cast<float>(400 + bot->GetLevel() * 10)} };
+    std::vector<std::tuple<uint32, int32, float>> destinationFetches = {
+        {(uint32)TravelDestinationPurpose::QuestGiver, 0, static_cast<float>((400 + bot->GetLevel() * 10) * std::max(0.5f, weights.chainWeight))}
+    };
 
     for (ObjectGuid guid : AI_VALUE_SAFE(std::list<ObjectGuid>, "group members"))
     {
@@ -2085,7 +2131,14 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             if (!flag)
                 continue;
 
-            destinationFetches.push_back({ flag, static_cast<int32>(questId), static_cast<float>(1000 + (bot->GetLevel() * bot->GetLevel()) * 75) });
+            const TravelDestinationPurpose dominantPurpose =
+                flag == (uint32)TravelDestinationPurpose::QuestTaker ? TravelDestinationPurpose::QuestTaker :
+                (flag & (uint32)TravelDestinationPurpose::QuestObjective1) ? TravelDestinationPurpose::QuestObjective1 :
+                TravelDestinationPurpose::QuestGiver;
+            const float weightedRange = static_cast<float>(1000 + (bot->GetLevel() * bot->GetLevel()) * 75) *
+                GetQuestArchetypePriorityMultiplier(bot, ai, dominantPurpose, questTemplate);
+
+            destinationFetches.push_back({ flag, static_cast<int32>(questId), weightedRange });
 
             if (onlyClassQuest && destinationFetches.size() > 1) //Only do class quests if we have any.
             {
@@ -2158,7 +2211,7 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     AI_VALUE(TravelTarget*, "travel target")->SetStatus(TravelStatus::TRAVEL_STATUS_PREPARE);
     SET_AI_VALUE2(std::string, "manual string", "future travel purpose", "quest");
     SET_AI_VALUE2(std::string, "manual string", "future travel condition", event.getSource());
-    SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
+    SET_AI_VALUE2(int, "manual int", "future travel relevance", int(relevance * 100 * std::max(0.5f, weights.progressWeight)));
 
     return true;
 }

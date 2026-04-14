@@ -3,8 +3,10 @@
 #include "PlayerbotMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "RandomPlayerbotMgr.h"
+#include "playerbot/AiFactory.h"
 #include "Group/Group.h"
 #include "Timer.h"
+#include <algorithm>
 
 
 using namespace ai;
@@ -13,6 +15,28 @@ namespace
 {
     constexpr uint32 PLAYERBOT_STARTUP_RAMP_DURATION_MS = 15 * 60 * 1000;
     constexpr uint32 PLAYERBOT_STARTUP_RAMP_MIN_LOGINS = 5;
+
+    uint32 GetArchetypeSessionSeconds(Player* player)
+    {
+        if (!player || !player->GetPlayerbotAI())
+            return urand(sPlayerbotAIConfig.minRandomBotInWorldTime, sPlayerbotAIConfig.maxRandomBotInWorldTime);
+
+        const ArchetypeWeights& weights = player->GetPlayerbotAI()->GetArchetypeWeights();
+        const uint32 minSeconds = std::max<uint32>(60, weights.minSessionMinutes * MINUTE);
+        const uint32 maxSeconds = std::max<uint32>(minSeconds, weights.maxSessionMinutes * MINUTE);
+        return urand(minSeconds, maxSeconds);
+    }
+
+    uint32 GetArchetypeOfflineSeconds(Player* player, uint32 sessionSeconds)
+    {
+        if (!player || !player->GetPlayerbotAI())
+            return urand(sPlayerbotAIConfig.minRandomBotInWorldTime, sPlayerbotAIConfig.maxRandomBotInWorldTime);
+
+        const float daysPerWeek = std::max(0.25f, player->GetPlayerbotAI()->GetArchetypeWeights().daysPerWeek);
+        const float offlineRatio = std::max(0.25f, (7.0f - daysPerWeek) / daysPerWeek);
+        const uint32 offlineSeconds = static_cast<uint32>(std::max<float>(60.0f, float(sessionSeconds) * offlineRatio));
+        return offlineSeconds;
+    }
 }
 
 PlayerLoginInfo::PlayerLoginInfo(const uint32 account, const uint32 guid, const uint8 race, const uint8 cls, const uint32 level, const bool isNew, const WorldPosition& position, const uint32 guildId) : account(account), guid(guid), race(race), cls(cls), level(level), isNew(isNew), position(position), guildId(guildId) {}
@@ -297,9 +321,6 @@ bool PlayerLoginInfo::LoginBot()
     holder = nullptr;
     holderState = HolderState::HOLDER_EMPTY;
 
-    if(sPlayerbotAIConfig.randomBotTimedLogout)
-        sRandomPlayerbotMgr.SetValue(guid, "add", 1, "", urand(sPlayerbotAIConfig.minRandomBotInWorldTime, sPlayerbotAIConfig.maxRandomBotInWorldTime));
-
     Player* player = sObjectMgr.GetPlayer(ObjectGuid(HIGHGUID_PLAYER, guid));
 
     if (!player)
@@ -311,6 +332,13 @@ bool PlayerLoginInfo::LoginBot()
     loginState = LoginState::BOT_ONLINE;
 
     Update(player);
+
+    const uint32 sessionSeconds = GetArchetypeSessionSeconds(player);
+    if (player->GetPlayerbotAI())
+        player->GetPlayerbotAI()->GetSession().plannedDuration = sessionSeconds / MINUTE;
+
+    if(sPlayerbotAIConfig.randomBotTimedLogout)
+        sRandomPlayerbotMgr.SetValue(guid, "add", 1, "", sessionSeconds);
 
     return true;
 }
@@ -329,6 +357,7 @@ bool PlayerLoginInfo::LogoutBot()
     }
 
     Update(player);
+    const uint32 sessionSeconds = GetArchetypeSessionSeconds(player);
 
     sRandomPlayerbotMgr.SetValue(guid, "add", 0, "", 0);
 
@@ -340,7 +369,7 @@ bool PlayerLoginInfo::LogoutBot()
     loginState = LoginState::BOT_OFFLINE;    
 
     if (sPlayerbotAIConfig.randomBotTimedOffline)
-        sRandomPlayerbotMgr.SetValue(guid, "logout", 1, "", urand(sPlayerbotAIConfig.minRandomBotInWorldTime, sPlayerbotAIConfig.maxRandomBotInWorldTime));
+        sRandomPlayerbotMgr.SetValue(guid, "logout", 1, "", GetArchetypeOfflineSeconds(player, sessionSeconds));
 
     return true;
 }

@@ -47,6 +47,18 @@ bool HealthInRangeTrigger::IsActive()
         && (!isTankRequired || (GetTarget()->IsPlayer() && ai->IsTank((Player*)GetTarget(), false)));
 }
 
+bool LowHealthTrigger::IsActive()
+{
+    const float originalMaxValue = maxValue;
+    const float archetypeThreshold = ai->GetArchetypeWeights().fleeHealthThreshold * 100.0f;
+
+    maxValue = std::max(minValue + 0.1f, archetypeThreshold);
+    const bool active = HealthInRangeTrigger::IsActive();
+    maxValue = originalMaxValue;
+
+    return active;
+}
+
 bool PartyMemberDeadTrigger::IsActive()
 {
 	return GetTarget();

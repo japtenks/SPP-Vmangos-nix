@@ -88,6 +88,7 @@ bool CloseToHazardTrigger::IsActive()
 {
     // If the bot is ready
     bool closeToHazard = false;
+    const float severityThreshold = std::max(0.0f, std::min(1.0f, ai->GetArchetypeWeights().hazardSeverityThreshold));
     if (bot->IsInWorld() && !bot->IsBeingTeleported())
     {
         const std::list<ObjectGuid>& possibleHazards = GetPossibleHazards();
@@ -99,7 +100,9 @@ bool CloseToHazardTrigger::IsActive()
                 const float distanceToHazard = GetDistanceToHazard(possibleHazardGuid);
                 if (distanceToHazard <= hazardRadius)
                 {
-                    closeToHazard = true;
+                    const float severity = hazardRadius > 0.0f ? std::max(0.0f, 1.0f - (distanceToHazard / hazardRadius)) : 1.0f;
+                    if (severity >= severityThreshold)
+                        closeToHazard = true;
                 }
             }
 

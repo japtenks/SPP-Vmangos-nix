@@ -9,11 +9,35 @@
 
 #include "playerbot/RandomItemMgr.h"
 #include "playerbot/ServerFacade.h"
+#include <cmath>
 
 using namespace ai;
 
 namespace
 {
+    float GetArchetypeEquipStrictness(const PlayerbotAI* ai)
+    {
+        if (!ai)
+            return 0.0f;
+
+        switch (ai->GetArchetype())
+        {
+            case BotArchetype::CASUAL:
+                return -0.05f;
+            case BotArchetype::RPG_QUEST:
+                return -0.02f;
+            case BotArchetype::GRINDER:
+                return 0.03f;
+            case BotArchetype::FARMER:
+                return 0.01f;
+            case BotArchetype::HARDCORE:
+                return 0.05f;
+            case BotArchetype::REGULAR:
+            default:
+                return 0.0f;
+        }
+    }
+
     bool IsMainArmorSubclass(uint32 subClass)
     {
         return subClass >= ITEM_SUBCLASS_ARMOR_CLOTH && subClass <= ITEM_SUBCLASS_ARMOR_PLATE;
@@ -893,13 +917,16 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
     }
 
     uint32 oldStatWeight = sRandomItemMgr.ItemStatWeight(bot, oldItem);
+    const float strictness = GetArchetypeEquipStrictness(ai);
+    const float statUpgradeRequirement = 1.0f + strictness;
+    const int32 itemLevelUpgradeRequirement = strictness > 0.0f ? static_cast<int32>(std::ceil(strictness * 20.0f)) : 0;
     if (statWeight && oldStatWeight)
     {
-        shouldEquip = statWeight >= oldStatWeight;
+        shouldEquip = float(statWeight) >= float(oldStatWeight) * statUpgradeRequirement;
     }
     else
     {
-        shouldEquip = itemProto->Quality >= oldItemProto->Quality && itemProto->ItemLevel > oldItemProto->ItemLevel;
+        shouldEquip = itemProto->Quality >= oldItemProto->Quality && int32(itemProto->ItemLevel) >= int32(oldItemProto->ItemLevel) + std::max(1, itemLevelUpgradeRequirement);
     }
 
     if (AI_VALUE2_EXISTS(ForceItemUsage, "force item usage", itemProto->ItemId, ForceItemUsage::FORCE_USAGE_NONE) == ForceItemUsage::FORCE_USAGE_EQUIP) //New item is forced. Always equip it.
@@ -913,11 +940,12 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
 
     //Compare items based on item level, quality.
     bool isBetter = false;
-    if (statWeight > oldStatWeight)
+    if (statWeight && oldStatWeight && float(statWeight) >= float(oldStatWeight) * statUpgradeRequirement)
         isBetter = true;
     else if (statWeight == oldStatWeight && itemProto->Quality > oldItemProto->Quality)
         isBetter = true;
-    else if (statWeight == oldStatWeight && itemProto->Quality == oldItemProto->Quality && itemProto->ItemLevel > oldItemProto->ItemLevel)
+    else if (statWeight == oldStatWeight && itemProto->Quality == oldItemProto->Quality &&
+        int32(itemProto->ItemLevel) >= int32(oldItemProto->ItemLevel) + std::max(1, itemLevelUpgradeRequirement))
         isBetter = true;
 
     Item* item = CurrentItem(itemProto, bot);
