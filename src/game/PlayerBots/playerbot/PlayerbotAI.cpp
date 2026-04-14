@@ -1034,8 +1034,7 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         if (master->GetTransport() && WorldPosition(bot).isOnTransport(master->GetTransport()))
         {
             master->GetTransport()->AddPassenger(bot);
-            isMovingToTransport = false;
-            isRidingTransport = true;
+            SetTransportState(TransportState::TRANSPORT_RIDING, master->GetTransport());
         }
         else if (bot->GetTransport())
         {
@@ -1043,21 +1042,18 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
             MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
-            isMovingToTransport = false;
-            isRidingTransport = false;
+            SetTransportState(TransportState::TRANSPORT_COMPLETE);
         }
     }
-    else if (isMovingToTransport && bot->GetTransport() && WorldPosition(bot).isOnTransport(bot->GetTransport()))
+    else if (GetMoveToTransport() && bot->GetTransport() && WorldPosition(bot).isOnTransport(bot->GetTransport()))
     {
-        isMovingToTransport = false;
-        isRidingTransport = true;
+        SetTransportState(TransportState::TRANSPORT_RIDING, bot->GetTransport());
     }
-    else if ((isMovingToTransport || isRidingTransport) && (!bot->GetTransport() || bot->IsBeingTeleported()))
+    else if ((GetMoveToTransport() || IsRidingTransport()) && (!bot->GetTransport() || bot->IsBeingTeleported()))
     {
-        isMovingToTransport = false;
-        isRidingTransport = false;
+        SetTransportState(bot->IsBeingTeleported() ? TransportState::TRANSPORT_DISEMBARKING : TransportState::TRANSPORT_COMPLETE);
     }
-    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !isMovingToTransport && !isRidingTransport)
+    else if (!HasRealPlayerMaster() && !bot->IsBeingTeleported() && bot->GetTransport() && bot->GetMapId() == bot->GetTransport()->GetMapId() && !WorldPosition(bot).isOnTransport(bot->GetTransport()) && !GetMoveToTransport() && !IsRidingTransport())
     {
         if (HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
         {
@@ -1069,6 +1065,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
         MANGOS_ASSERT(botPos.fDist(bot) < 500.0f);
         bot->StopMoving();
+        SetTransportState(TransportState::TRANSPORT_COMPLETE);
+    }
+    else if (m_transportState != TransportState::TRANSPORT_NONE && m_transportState != TransportState::TRANSPORT_RIDING && !bot->GetTransport() && !bot->IsBeingTeleported())
+    {
+        SetTransportState(TransportState::TRANSPORT_NONE);
     }
 
     // Update facing

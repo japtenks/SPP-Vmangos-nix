@@ -105,6 +105,17 @@ enum class ControlAuthorityMode
     REFRESHED_WITH_OVERRIDE
 };
 
+enum class TransportState
+{
+    TRANSPORT_NONE,
+    TRANSPORT_WAITING,
+    TRANSPORT_BOARDING,
+    TRANSPORT_RIDING,
+    TRANSPORT_DISEMBARKING,
+    TRANSPORT_COMPLETE,
+    TRANSPORT_FAILED
+};
+
 struct ControlLaneState
 {
     ControlAuthorityMode authorityMode = ControlAuthorityMode::LEGACY_FULL;
@@ -667,10 +678,17 @@ public:
     bool IsInPvp();
     bool IsInRaid();
 
-    void SetMoveToTransport(bool flag = true) { isMovingToTransport = flag; }
-    bool GetMoveToTransport() const { return isMovingToTransport; }
-    void SetRideTransport(bool flag = true) { isRidingTransport = flag; }
-    bool IsRidingTransport() const { return isRidingTransport; }
+    void SetTransportState(TransportState state, GenericTransport* transport = nullptr)
+    {
+        m_transportState = state;
+        m_currentTransport = transport;
+    }
+    TransportState GetTransportState() const { return m_transportState; }
+    GenericTransport* GetCurrentTransport() const { return m_currentTransport; }
+    void SetMoveToTransport(bool flag = true) { SetTransportState(flag ? TransportState::TRANSPORT_BOARDING : TransportState::TRANSPORT_NONE, flag ? m_currentTransport : nullptr); }
+    bool GetMoveToTransport() const { return m_transportState == TransportState::TRANSPORT_BOARDING || m_transportState == TransportState::TRANSPORT_WAITING; }
+    void SetRideTransport(bool flag = true) { SetTransportState(flag ? TransportState::TRANSPORT_RIDING : TransportState::TRANSPORT_NONE, flag ? m_currentTransport : nullptr); }
+    bool IsRidingTransport() const { return m_transportState == TransportState::TRANSPORT_RIDING; }
 
     void SetShouldLogOut(bool val = true) { shouldLogOut = val; }
     bool GetShouldLogOut() { return shouldLogOut; }
@@ -766,8 +784,8 @@ protected:
     bool fallAfterJump;
     uint32 faceTargetUpdateDelay;
     bool isPlayerFriend = false;
-    bool isMovingToTransport = false;
-    bool isRidingTransport = false;
+    TransportState m_transportState = TransportState::TRANSPORT_NONE;
+    GenericTransport* m_currentTransport = nullptr;
     bool shouldLogOut = false;
     BotArchetype archetype = BotArchetype::REGULAR;
     ArchetypeWeights archetypeWeights = {};

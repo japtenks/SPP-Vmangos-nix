@@ -55,6 +55,76 @@ namespace
     }
 }
 
+GenericTransport* MovementAction::FindNearbyTransport(float radius) const
+{
+    WorldPosition botPos(bot);
+    GenericTransport* nearestTransport = nullptr;
+    float nearestDistanceSq = radius * radius;
+
+    for (auto goPair : botPos.getGameObjectsNear(radius))
+    {
+        if (GameObject* go = botPos.getMap(bot->GetInstanceId())->GetGameObject(goPair->first))
+        {
+            if (GenericTransport* transport = dynamic_cast<GenericTransport*>(go))
+            {
+                const float distanceSq = botPos.sqDistance2d(transport);
+                if (distanceSq <= nearestDistanceSq)
+                {
+                    nearestDistanceSq = distanceSq;
+                    nearestTransport = transport;
+                }
+            }
+        }
+    }
+
+    return nearestTransport;
+}
+
+bool MovementAction::FindNearbyShore(WorldPosition& shore) const
+{
+    shore = WorldPosition(bot);
+    return shore.ClosestCorrectPoint(30.0f, 8.0f, bot->GetInstanceId());
+}
+
+bool MovementAction::HandleTransportRecovery()
+{
+    if (ai->GetTransportState() == TransportState::TRANSPORT_RIDING)
+        return false;
+
+    if (bot->GetTransport())
+    {
+        ai->SetTransportState(TransportState::TRANSPORT_RIDING, bot->GetTransport());
+        return false;
+    }
+
+    if (!bot->IsInWater() && !sServerFacade.IsUnderwater(bot))
+        return false;
+
+    if (GenericTransport* nearbyTransport = FindNearbyTransport(50.0f))
+    {
+        ai->SetTransportState(TransportState::TRANSPORT_BOARDING, nearbyTransport);
+        return false;
+    }
+
+    WorldPosition shore;
+    if (FindNearbyShore(shore))
+    {
+        ai->SetTransportState(TransportState::TRANSPORT_FAILED);
+        MotionMaster& mm = *bot->GetMotionMaster();
+        ai->StopMoving();
+        mm.Clear();
+        mm.MovePoint(shore.getMapId(), Position(shore.getX(), shore.getY(), shore.getZ(), 0.f));
+        AI_VALUE(LastMovement&, "last movement").setShort(WorldPosition(bot), shore);
+        return true;
+    }
+
+    ai->SetTransportState(TransportState::TRANSPORT_FAILED);
+    if (AI_VALUE2(bool, "action useful", "hearthstone") && (!bot->IsFlying() || WorldPosition(bot).currentHeight() < 10.0f))
+        return ai->DoSpecificAction("hearthstone", Event("transport recovery"), true);
+
+    return false;
+}
+
 void MovementAction::CreateWp(Player* wpOwner, float x, float y, float z, float o, uint32 entry, bool important)
 {
     float dist = wpOwner->GetDistance(x, y, z);
@@ -375,6 +445,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
     if (transport)
     {
+        ai->SetTransportState(TransportState::TRANSPORT_RIDING, transport);
         GameObjectInfo const* data = sObjectMgr.GetGameObjectTemplate(transport->GetEntry());
         std::string transportName = transport->GetName();
         if (transportName.empty())
@@ -382,11 +453,13 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
 
         if (dockPosition.mapId == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
         {
+            ai->SetTransportState(TransportState::TRANSPORT_DISEMBARKING, transport);
             WorldPosition botPos(bot);
             bot->GetTransport()->RemovePassenger(bot);
             bot->NearTeleportTo(bot->m_movementInfo.pos.x, bot->m_movementInfo.pos.y, bot->m_movementInfo.pos.z, bot->m_movementInfo.pos.o);
 
             ai->TellDebug(ai->GetMaster(), "Leaving transport " + transportName, "debug move");
+            ai->SetTransportState(TransportState::TRANSPORT_COMPLETE);
             return true;
         }
 
@@ -405,6 +478,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         //This boat is near: Get on it.
         if (dockPosition.mapId == bot->GetMapId() && dockPosition.sqDistance2d(transport) < INTERACTION_DISTANCE * INTERACTION_DISTANCE)
         {
+            ai->SetTransportState(TransportState::TRANSPORT_BOARDING, transport);
             uint32 radius = 10;
 
             WorldPosition transPos(transport);
@@ -453,6 +527,7 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
             }
 
             transport->AddPassenger(bot, true);
+            ai->SetTransportState(TransportState::TRANSPORT_RIDING, transport);
 
             ai->StopMoving();
 
@@ -470,11 +545,13 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         }
 
         ai->TellDebug(ai->GetMaster(), "Waiting for transport " + std::string(transportName) + " at " + std::to_string((uint32)dockPosition.fDist(transport)) + "y from docking.", "debug move");
+        ai->SetTransportState(TransportState::TRANSPORT_WAITING, transport);
 
         return false;
     }
 
     ai->TellDebug(ai->GetMaster(), "Waiting for transport on different map.", "debug move");
+    ai->SetTransportState(TransportState::TRANSPORT_WAITING);
 
     return false;
 }
@@ -633,6 +710,8 @@ bool MovementAction::WaitForTransport()
     if (!transport || transport->GetEntry() != lastMove.lastTransportEntry || lastMove.lastPath.getPath().front().type != PathNodeType::NODE_TRANSPORT || lastMove.lastPath.getPath().front().entry != lastMove.lastTransportEntry)
     {
         lastMove.lastTransportEntry = 0;
+        if (ai->GetTransportState() == TransportState::TRANSPORT_WAITING || ai->GetTransportState() == TransportState::TRANSPORT_BOARDING)
+            ai->SetTransportState(TransportState::TRANSPORT_NONE);
         return false;
     }
 
@@ -643,11 +722,15 @@ bool MovementAction::WaitForTransport()
     WorldPosition movePoint = lastMove.lastPath.getNextPoint(bot, 0.0f, pathType, entry, true, telePosition);
 
     if (!UseTransport(ai, entry, movePoint))
+    {
+        ai->SetTransportState(bot->GetTransport() ? TransportState::TRANSPORT_BOARDING : TransportState::TRANSPORT_WAITING, bot->GetTransport());
         return true;
+    }
 
     bot->TeleportTo(telePosition.getMapId(), telePosition.getX(), telePosition.getY(), telePosition.getZ(), telePosition.getO(), 0);
 
     lastMove.lastTransportEntry = 0;
+    ai->SetTransportState(TransportState::TRANSPORT_COMPLETE);
     return false;
 }
 
@@ -661,6 +744,9 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
     if (!IsMovingAllowed())
         return false;
+
+    if (ai->GetTransportState() == TransportState::TRANSPORT_RIDING)
+        return true;
 
     bool isVehicle = false;
     Unit* mover = bot;
@@ -712,6 +798,9 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
 
     if (WaitForTransport())
+        return true;
+
+    if (HandleTransportRecovery())
         return true;
 
     WorldPosition startPosition = WorldPosition(bot);             //Current location of the bot
