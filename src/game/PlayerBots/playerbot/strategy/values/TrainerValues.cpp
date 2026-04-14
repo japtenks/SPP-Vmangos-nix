@@ -49,6 +49,42 @@ namespace
         return false;
     }
 
+    std::vector<uint32> GetTrainerSkillIds(TrainerSpell const* trainerSpell)
+    {
+        std::vector<uint32> teachIds;
+        if (!trainerSpell)
+            return teachIds;
+
+        auto addTeach = [&](uint32 teachId)
+        {
+            if (!teachId)
+                return;
+
+            if (std::find(teachIds.begin(), teachIds.end(), teachId) == teachIds.end())
+                teachIds.push_back(teachId);
+        };
+
+        addTeach(trainerSpell->spell[0]);
+
+        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell[0]);
+        if (learnSkill)
+            addTeach(learnSkill->skill);
+
+        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell[0]);
+        for (SpellLearnSpellMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            addTeach(itr->second.spell);
+            SpellLearnSkillNode const* learnedSkill = sSpellMgr.GetSpellLearnSkill(itr->second.spell);
+            if (learnedSkill)
+                addTeach(learnedSkill->skill);
+        }
+
+        if (trainerSpell->reqSkill)
+            addTeach(trainerSpell->reqSkill);
+
+        return teachIds;
+    }
+
     bool TeachesAnyMissingWeaponSkill(TrainerSpell const* trainerSpell, Player* bot)
     {
         for (uint32 skillId : GetMissingWeaponSkills(bot))
@@ -60,12 +96,12 @@ namespace
         return false;
     }
 
-    float GetTrainerKnowledgeScore(uint32 trainerEntry, Player* bot)
+    float GetTrainerKnowledgeScore(uint32 trainerEntry, uint32 trainerRequirement, std::vector<uint32> const& teachIds, Player* bot)
     {
-        if (!bot)
+        if (!bot || teachIds.empty())
             return 0.0f;
 
-        return sServerSharedKnowledge.GetTrainerSkillConfidence(trainerEntry, bot->GetClass(), GetMissingWeaponSkills(bot), bot->GetMapId());
+        return sServerSharedKnowledge.GetTrainerTeachingConfidence(trainerEntry, trainerRequirement, teachIds, bot->GetMapId());
     }
 }
 
@@ -270,7 +306,7 @@ std::vector<int32> AvailableTrainersValue::Calculate()
 
                     for (auto& trainer : trainers)
                     {
-                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, bot));
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, bot->GetClass(), GetMissingWeaponSkills(bot), bot));
                         if (std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                             retTrainers.push_back(trainer);
                     }
@@ -282,8 +318,18 @@ std::vector<int32> AvailableTrainersValue::Calculate()
                 if (std::find(trainableSpells.begin(), trainableSpells.end(), trainerSpell) == trainableSpells.end())
                     continue;
 
+                std::vector<uint32> taughtSkills = GetTrainerSkillIds(trainerSpell);
+                for (uint32 teachId : taughtSkills)
+                {
+                    for (int32 trainer : trainers)
+                        sServerSharedKnowledge.RecordTrainerTeaching(trainer, requirement, teachId, bot->GetMapId(), 0.02f);
+                }
+
                 for (auto& trainer : trainers)
                 {
+                    if (!taughtSkills.empty())
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, requirement, taughtSkills, bot));
+
                     if(std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                         retTrainers.push_back(trainer);
                 }
@@ -291,7 +337,7 @@ std::vector<int32> AvailableTrainersValue::Calculate()
         }
     }
 
-    if (needsWeaponSkillTraining && !retTrainers.empty())
+    if (!trainerKnowledgeScores.empty() && !retTrainers.empty())
     {
         std::stable_sort(retTrainers.begin(), retTrainers.end(), [&](int32 left, int32 right)
         {
