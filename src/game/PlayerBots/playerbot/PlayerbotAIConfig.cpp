@@ -306,7 +306,9 @@ bool PlayerbotAIConfig::Initialize()
     bExplicitDbStoreSave = config.GetBoolDefault("AiPlayerbot.ExplicitDbStoreSave", false);
 
     randomBotLoginWithPlayer = config.GetBoolDefault("AiPlayerbot.RandomBotLoginWithPlayer", false);
-    asyncBotLogin = config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false);
+    asyncBotLogin = config.GetBoolDefault(
+        "AiPlayerbot.BackgroundBotLogin",
+        config.GetBoolDefault("AiPlayerbot.AsyncBotLogin", false));
     preloadHolders = config.GetBoolDefault("AiPlayerbot.PreloadHolders", false);
     
     freeRoomForNonSpareBots = config.GetIntDefault("AiPlayerbot.FreeRoomForNonSpareBots", 1);

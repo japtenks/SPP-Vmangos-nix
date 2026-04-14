@@ -73,8 +73,9 @@ AiPlayerbot.RandomBotShowCloak = 1
 # AiPlayerbot.RandomBotLoginWithPlayer = 0
 
 # Random bot count
-AiPlayerbot.MinRandomBots = 300
-AiPlayerbot.MaxRandomBots = 500
+# Recommended startup-safe range. Raise gradually after verifying DB/login responsiveness.
+AiPlayerbot.MinRandomBots = 100
+AiPlayerbot.MaxRandomBots = 200
 
 # Bot level bounds
 AiPlayerbot.RandomBotMinLevel = 1
@@ -205,9 +206,10 @@ AiPlayerbot.RandomBotTeleportTeleportMaxInterval = 172800
 AiPlayerbot.RandomBotRpgChance = 0.20
 
 # Bot transport use style:
-# 0 = walk on transports (currently not available)
-# 1 = teleport on transports and ride it
-# 2 = teleport from dock to dock bypassing transport
+# 0 = legacy walk-on mode (currently not available)
+# 1 = teleport onto the transport and ride it
+# 2 = teleport from dock to dock, bypassing the transport ride
+# Recommended: 2
 # AiPlayerbot.TransportTeleportType = 2
 
 # Chance for bot to use potions
@@ -682,7 +684,8 @@ AiPlayerbot.FleeingEnabled = 1
 
 # Intervals
 #AiPlayerbot.RandomBotUpdateInterval = 1000
-AiPlayerbot.RandomBotsMaxLoginsPerInterval = 25
+# Recommended startup-safe login rate. Raise gradually only if the world and DB stay responsive.
+AiPlayerbot.RandomBotsMaxLoginsPerInterval = 4
 AiPlayerbot.RandomBotCountChangeMinInterval = 600
 AiPlayerbot.RandomBotCountChangeMaxInterval = 1800
 #AiPlayerbot.MinRandomBotInWorldTime = 3600
@@ -895,11 +898,14 @@ AiPlayerbot.LLMDefaultPromptsFile = llm_character_card.txt
 # AiPlayerbot.LLMApiJson = {"model": "gpt-4o-mini", "messages": [{"role": "system", "content": "<pre prompt> <context>"},{"role": "user", "content": "<prompt>"}],"max_tokens": 60}
 # AiPlayerbot.LLMResponseStartPattern = ("content":\s*")
 
-# Enable the alternative asynchronous login system.
-# AiPlayerbot.AsyncBotLogin = 0
+# Enable background bot login orchestration.
+# Preferred key:
+# AiPlayerbot.BackgroundBotLogin = 1
+# Legacy alias still supported:
+# AiPlayerbot.AsyncBotLogin = 1
 
-# Dramatically speeds up initial and future bot logins but takes 2gb/1000 accounts and might prevent player login during the initial bot login period.
-# !!warning heavy db usage at start!!
+# Dramatically speeds up initial and future bot logins but takes 2gb/1000 accounts and can overload DB/login responsiveness during startup.
+# Keep this disabled unless you have already validated the server under load.
 # AiPlayerbot.PreloadHolders = 0
 
 # The login criteria to apply when trying to log in/keep online bots. options: 

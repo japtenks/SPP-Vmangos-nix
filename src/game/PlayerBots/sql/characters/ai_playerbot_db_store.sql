@@ -4,7 +4,7 @@ CREATE TABLE `ai_playerbot_db_store` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `guid` bigint(20) NOT NULL,
   `preset` varchar(32) NOT NULL,
-  `key` varchar(32) NOT NULL,
+  `key` varchar(128) NOT NULL,
   `value` varchar(4000) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `guid` (`guid`)
