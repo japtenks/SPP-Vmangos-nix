@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "EnemyPlayerValue.h"
 #include "TargetValue.h"
 
@@ -117,6 +118,7 @@ Unit* EnemyPlayerValue::Calculate()
     if (!enemyPlayers.empty())
     {
         const bool isMelee = !ai->IsRanged(bot);
+        const uint64 botGuid = bot->GetObjectGuid().GetRawValue();
         uint32 bestEnemyPlayerHealth = std::numeric_limits<uint32>::max();
         float bestEnemyPlayerDistance = std::numeric_limits<float>::max();
       
@@ -134,6 +136,13 @@ Unit* EnemyPlayerValue::Calculate()
             Unit* target = ai->GetUnit(targetGuid);
             if (target)
             {
+                if (target->IsPlayer() &&
+                    sServerSocialMgr.HasHitListFlag(botGuid, target->GetObjectGuid().GetRawValue()))
+                {
+                    bestEnemyPlayer = target;
+                    break;
+                }
+
                 // Prioritize an enemy player if it has a battleground flag
                 if ((bot->GetTeam() == HORDE && target->HasAura(23333)) ||
                     (bot->GetTeam() == ALLIANCE && target->HasAura(23335)))

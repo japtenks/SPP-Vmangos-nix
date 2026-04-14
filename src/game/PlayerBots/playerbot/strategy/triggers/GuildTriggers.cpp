@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildTriggers.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "GuildMgr.h"
 
 using namespace ai;
@@ -36,6 +37,5 @@ bool LeaveLargeGuildTrigger::IsActive()
 	uint32 members = guild->GetMemberSize();
 	uint32 maxMembers = ai->GetMaxPreferedGuildSize();
 
-	return members > maxMembers;
+	return members > maxMembers || sServerSocialMgr.ShouldLeaveGuild(bot, guild);
 }
-

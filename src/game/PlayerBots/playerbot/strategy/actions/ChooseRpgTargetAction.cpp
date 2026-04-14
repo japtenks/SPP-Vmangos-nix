@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/PossibleRpgTargetsValue.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/strategy/values/BudgetValues.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "GuildCreateActions.h"
 #include "RpgSubActions.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"
@@ -14,6 +15,84 @@
 #include <iomanip>
 
 using namespace ai;
+
+namespace
+{
+    float GetHubQuality(WorldObject* object)
+    {
+        Unit* unit = dynamic_cast<Unit*>(object);
+        if (!unit)
+            return 0.10f;
+
+        float score = 0.10f;
+        if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_INNKEEPER))
+            score += 0.55f;
+        if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_FLIGHTMASTER))
+            score += 0.35f;
+        if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP))
+            score += 0.20f;
+        if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_VENDOR) || unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_REPAIR))
+            score += 0.16f;
+        if (unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_AUCTIONEER) || unit->HasFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_BANKER))
+            score += 0.12f;
+
+        return score;
+    }
+
+    float GetSocialTargetBonus(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        Player* bot = ai ? ai->GetBot() : nullptr;
+        if (!bot)
+            return 0.0f;
+
+        const ArchetypeWeights& weights = ai->GetArchetypeWeights();
+        const float archetypeBias = weights.curiosityWeight * (0.65f + (0.35f * weights.explorationRadiusBias));
+        const uint64 botGuid = bot->GetObjectGuid().GetRawValue();
+        const uint32 areaId = sServerSocialMgr.NormalizeAreaId(bot);
+
+        float bonus = 0.0f;
+        const uint32 knownContacts = sServerSocialMgr.GetKnownContactCount(botGuid);
+        const bool sociallyCautious = knownContacts < 3 && !bot->GetGuildId();
+
+        if (guidP.IsPlayer())
+        {
+            Player* other = guidP.GetPlayer();
+            if (!other)
+                return 0.0f;
+
+            const uint64 otherGuid = other->GetObjectGuid().GetRawValue();
+            const float affinity = sServerSocialMgr.GetAffinity(botGuid, otherGuid);
+            const float hostility = sServerSocialMgr.GetHostility(botGuid, otherGuid);
+            bonus += affinity * 140.0f * archetypeBias;
+            bonus -= hostility * 220.0f;
+            if (bot->GetGuildId() && bot->GetGuildId() == other->GetGuildId())
+                bonus += 26.0f;
+            if (sociallyCautious && affinity < 0.08f)
+                bonus -= 45.0f;
+        }
+        else
+        {
+            WorldObject* object = guidP.GetWorldObject(bot->GetInstanceId());
+            bonus += GetHubQuality(object) * 85.0f * archetypeBias;
+            if (sociallyCautious)
+                bonus -= 18.0f;
+        }
+
+        if (bot->GetGuildId())
+            bonus += sServerSocialMgr.GetGuildAreaAlignment(bot->GetGuildId(), areaId) * 35.0f;
+
+        BotSession const& session = ai->GetSession();
+        if (session.state == SessionState::QUESTING || session.state == SessionState::MAINTENANCE)
+            bonus *= 0.45f;
+        else if (session.state == SessionState::IDLE || session.state == SessionState::TRAVELLING)
+            bonus *= 1.10f;
+
+        if (ai->GetCommittedTask().purpose != TravelDestinationPurpose::None)
+            bonus *= 0.60f;
+
+        return bonus;
+    }
+}
 
 bool ChooseRpgTargetAction::HasSameTarget(ObjectGuid guid, uint32 max, std::list<ObjectGuid>& nearGuids)
 {
@@ -213,6 +292,7 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
 
         //For all rpg actions that are triggered/possible for this target get the highest relevance.
         float relevance = getMaxRelevance(guidP);
+        relevance += GetSocialTargetBonus(ai, guidP);
 
         //If this rpg target is our travel target increase the relevance by 50% to make it more likely to be picked.
         if (isTravelTarget)

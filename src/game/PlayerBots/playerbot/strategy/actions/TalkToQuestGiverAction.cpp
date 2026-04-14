@@ -1,6 +1,8 @@
 #include "Config/Config.h"
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ServerFacade.h"
+#include "playerbot/ServerFacade.h"
 #include "playerbot/ServerSharedKnowledge.h"
 #include "TalkToQuestGiverAction.h"
 #include "playerbot/strategy/values/ItemUsageValue.h"

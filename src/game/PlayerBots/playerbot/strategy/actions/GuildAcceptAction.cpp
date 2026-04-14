@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildAcceptAction.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "playerbot/ServerFacade.h"
 #include "GuildMgr.h"
 
@@ -55,6 +56,7 @@ bool GuildAcceptAction::Execute(Event& event)
     }
 
     Guild* guild = sGuildMgr.GetGuildById(guildId);
+    const float guildJoinBias = guild ? sServerSocialMgr.GetGuildJoinBias(bot, guild, inviter->GetObjectGuid().GetRawValue()) : 0.0f;
 
     if(guild && guild->GetMemberSize() > 1000)
     {
@@ -63,6 +65,19 @@ bool GuildAcceptAction::Execute(Event& event)
         if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
             bot->Say(BOT_TEXT2("%name, your guild has over 1000 members. To stop it from reaching the 1064 member limit I refuse to join it.", placeholders).c_str(), (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
 
+        accept = false;
+    }
+    else if (guild && guildJoinBias < -0.25f)
+    {
+        ai->TellError(requester, "This guild does not feel like a good fit right now.");
+
+        if (sServerFacade.GetDistance2d(bot, inviter) < sPlayerbotAIConfig.spellDistance * 1.5 && inviter->GetPlayerbotAI())
+            bot->Say(BOT_TEXT2("I don't think your guild is a good fit for me right now %name.", placeholders).c_str(), (bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH));
+
+        accept = false;
+    }
+    else if (guild && guildJoinBias < 0.10f && urand(0, 99) < 45)
+    {
         accept = false;
     }
 
@@ -78,6 +93,12 @@ bool GuildAcceptAction::Execute(Event& event)
     if (accept)
     {
         bot->GetSession()->HandleGuildAcceptOpcode(MakeNullPacket(packet));
+
+        sServerSocialMgr.AddAffinity(bot->GetObjectGuid().GetRawValue(), inviter->GetObjectGuid().GetRawValue(), 0.12f,
+            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY);
+        sServerSocialMgr.AddAffinity(inviter->GetObjectGuid().GetRawValue(), bot->GetObjectGuid().GetRawValue(), 0.06f,
+            SOCIAL_RELATIONSHIP_KNOWN | SOCIAL_RELATIONSHIP_GUILD_FRIENDLY);
+        sServerSocialMgr.ObserveGuildArea(bot, sServerSocialMgr.NormalizeAreaId(bot), 1.8f);
 
         TalentSpec::SetPublicNote(bot);
 

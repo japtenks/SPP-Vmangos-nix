@@ -1,6 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "GuildManagementActions.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "playerbot/ServerFacade.h"
 
 using namespace ai;
@@ -125,6 +126,9 @@ bool GuildManageNearbyAction::Execute(Event& event)
             continue;
 
         PlayerbotAI* botAi = player->GetPlayerbotAI();
+        const float guildJoinBias = sServerSocialMgr.GetGuildJoinBias(player, guild, bot->GetObjectGuid().GetRawValue());
+        if (guildJoinBias < -0.15f)
+            continue;
 
         if (botAi)
         {            
@@ -136,8 +140,6 @@ bool GuildManageNearbyAction::Execute(Event& event)
 
             if (guild->GetMemberSize() >= botAi->GetMaxPreferedGuildSize() || guild->GetMemberSize() < botAi->GetMaxPreferedGuildSize() / 4)
                 continue;
-
-
         }
 
         bool sameGroup = bot->GetGroup() && bot->GetGroup()->IsMember(player->GetObjectGuid());
@@ -258,6 +260,12 @@ bool GuildLeaveAction::Execute(Event& event)
     }
 
     sPlayerbotAIConfig.logEvent(ai, "GuildLeaveAction", guild->GetName(), std::to_string(guild->GetMemberSize()));
+    if (guild)
+    {
+        const uint64 leaderGuid = guild->GetLeaderGuid().GetRawValue();
+        if (leaderGuid)
+            sServerSocialMgr.AddHostility(bot->GetObjectGuid().GetRawValue(), leaderGuid, 0.04f, SOCIAL_RELATIONSHIP_RIVAL);
+    }
 
     WorldPacket packet;
     bot->GetSession()->HandleGuildLeaveOpcode(MakeNullPacket(packet));

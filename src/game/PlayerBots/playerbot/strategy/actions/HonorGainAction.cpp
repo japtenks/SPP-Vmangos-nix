@@ -1,7 +1,7 @@
 
 #include "playerbot/playerbot.h"
 #include "HonorGainAction.h"
-
+#include "playerbot/ServerSocialMgr.h"
 
 
 using namespace ai;
@@ -44,6 +44,21 @@ bool HonorGainAction::Execute(Event& event)
 
         if (player)
         {
+            sServerSocialMgr.AddHostility(
+                bot->GetObjectGuid().GetRawValue(),
+                player->GetObjectGuid().GetRawValue(),
+                0.18f,
+                SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+
+            if (player->GetPlayerbotAI())
+            {
+                sServerSocialMgr.AddHostility(
+                    player->GetObjectGuid().GetRawValue(),
+                    bot->GetObjectGuid().GetRawValue(),
+                    0.22f,
+                    SOCIAL_RELATIONSHIP_RIVAL | SOCIAL_RELATIONSHIP_PVP_HIT_LIST);
+            }
+
             if (!bot->InBattleGround()
 #ifndef MANGOSBOT_ZERO
                 && !bot->InArena()

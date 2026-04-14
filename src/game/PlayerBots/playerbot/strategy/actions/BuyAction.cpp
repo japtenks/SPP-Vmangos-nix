@@ -48,7 +48,7 @@ namespace
 
         for (uint32 skillId : trackedSkills)
         {
-            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, skillId))
+            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, static_cast<SkillType>(skillId)))
                 return skillId;
         }
 

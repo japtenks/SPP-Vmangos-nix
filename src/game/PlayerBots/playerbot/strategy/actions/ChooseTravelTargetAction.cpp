@@ -4,6 +4,7 @@
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/ServerSharedKnowledge.h"
+#include "playerbot/ServerSocialMgr.h"
 #include "playerbot/strategy/values/QuestValues.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
@@ -171,7 +172,7 @@ namespace
 
         for (uint32 skillId : trackedSkills)
         {
-            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, skillId))
+            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, static_cast<SkillType>(skillId)))
                 return skillId;
         }
 
@@ -221,6 +222,51 @@ namespace
         }
 
         return GetNpcPreferenceScore(bot, knowledge, purpose);
+    }
+
+    float GetSocialDestinationScore(Player* bot, TravelDestination* destination)
+    {
+        if (!bot || !destination || destination->GetPurpose() != TravelDestinationPurpose::GenericRpg)
+            return 0.0f;
+
+        const ArchetypeWeights& weights = bot->GetPlayerbotAI()->GetArchetypeWeights();
+        const float archetypeBias = weights.curiosityWeight * (0.65f + (0.35f * weights.explorationRadiusBias));
+        const uint32 areaId = sServerSocialMgr.NormalizeAreaId(bot);
+
+        float score = 0.0f;
+        EntryTravelDestination* entryDestination = dynamic_cast<EntryTravelDestination*>(destination);
+        if (entryDestination && entryDestination->GetCreatureInfo())
+        {
+            const uint32 npcFlags = entryDestination->GetCreatureInfo()->npc_flags;
+            if (npcFlags & UNIT_NPC_FLAG_INNKEEPER)
+                score += 0.85f;
+            if (npcFlags & UNIT_NPC_FLAG_FLIGHTMASTER)
+                score += 0.55f;
+            if (npcFlags & UNIT_NPC_FLAG_GOSSIP)
+                score += 0.30f;
+            if (npcFlags & UNIT_NPC_FLAG_VENDOR)
+                score += 0.24f;
+            if (npcFlags & UNIT_NPC_FLAG_BANKER)
+                score += 0.12f;
+        }
+        else
+        {
+            score += 0.12f;
+        }
+
+        if (bot->GetGuildId())
+            score += 0.50f * sServerSocialMgr.GetGuildAreaAlignment(bot->GetGuildId(), areaId);
+
+        if (sServerSocialMgr.GetKnownContactCount(bot->GetObjectGuid().GetRawValue()) < 3 && !bot->GetGuildId())
+            score *= 0.55f;
+
+        BotSession const& session = bot->GetPlayerbotAI()->GetSession();
+        if (session.state == SessionState::QUESTING || session.state == SessionState::MAINTENANCE)
+            score *= 0.45f;
+        else if (session.state == SessionState::IDLE)
+            score *= 1.20f;
+
+        return score * archetypeBias;
     }
 
     uint32 CountDestinationQuestTurnIns(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap, std::vector<uint32> const& questIds)
@@ -763,6 +809,11 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             TravelDestination* leftDestination = std::get<0>(left);
             TravelDestination* rightDestination = std::get<0>(right);
 
+            const float leftSocialScore = GetSocialDestinationScore(bot, leftDestination);
+            const float rightSocialScore = GetSocialDestinationScore(bot, rightDestination);
+            if (leftSocialScore != rightSocialScore)
+                return leftSocialScore > rightSocialScore;
+
             const float leftScore = GetQuestPriorityScore(ai, leftDestination, questPriorityCache);
             const float rightScore = GetQuestPriorityScore(ai, rightDestination, questPriorityCache);
 
@@ -1233,7 +1284,18 @@ bool RequestTravelTargetAction::isAllowed() const
     case TravelDestinationPurpose::Explore:
         return urand(1, 100) < 10;
     case TravelDestinationPurpose::GenericRpg:
-        return urand(1, 100) < 50;
+    {
+        uint32 chance = 55;
+        if (bot->GetPlayerbotAI()->GetSession().state == SessionState::IDLE)
+            chance = 80;
+        else if (bot->GetPlayerbotAI()->GetSession().state == SessionState::QUESTING || bot->GetPlayerbotAI()->GetSession().state == SessionState::MAINTENANCE)
+            chance = 25;
+
+        if (sServerSocialMgr.GetKnownContactCount(bot->GetObjectGuid().GetRawValue()) < 3 && !bot->GetGuildId())
+            chance = std::max<uint32>(15, chance / 2);
+
+        return urand(1, 100) < chance;
+    }
     case TravelDestinationPurpose::Grind:
         return true;
     default:

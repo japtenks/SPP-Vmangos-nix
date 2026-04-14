@@ -52,11 +52,11 @@ namespace
         if (!trainerSpell || !skillId)
             return false;
 
-        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell[0]);
+        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell);
         if (learnSkill && learnSkill->skill == skillId)
             return true;
 
-        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell[0]);
+        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell);
         for (SpellLearnSpellMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
             SpellLearnSkillNode const* learnedSkill = sSpellMgr.GetSpellLearnSkill(itr->second.spell);
@@ -82,13 +82,13 @@ namespace
                 teachIds.push_back(teachId);
         };
 
-        addTeach(trainerSpell->spell[0]);
+        addTeach(trainerSpell->spell);
 
-        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell[0]);
+        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell);
         if (learnSkill)
             addTeach(learnSkill->skill);
 
-        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell[0]);
+        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell);
         for (SpellLearnSpellMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
         {
             addTeach(itr->second.spell);
@@ -211,7 +211,7 @@ trainableSpellMap* TrainableSpellMapValue::Calculate()
 #ifndef MANGOSBOT_TWO
                 if (false /* othertrainerSpell not available */)
 #else
-                if (othertrainerSpell->spell[0] != trainerSpell.spell[0])
+                if (othertrainerSpell->spell != trainerSpell.spell)
 #endif
                     continue;
 
@@ -232,7 +232,7 @@ trainableSpellMap* TrainableSpellMapValue::Calculate()
 #ifdef MANGOSBOT_ZERO
                     SpellEntry const* spell = sSpellMgr.GetSpellEntry(trainerSpell.spell);
 #else
-                    SpellEntry const* spell = sSpellMgr.GetSpellEntry(trainerSpell.spell[0]);
+                    SpellEntry const* spell = sSpellMgr.GetSpellEntry(trainerSpell.spell);
 #endif
 
                     spellRequirement = spell->EffectMiscValue[1];
@@ -280,7 +280,7 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
 #ifdef MANGOSBOT_ZERO
                 if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->spell) && sSpellMgr.GetSpellRank(trainerSpell->spell) == 1)
 #else
-                if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->spell[0]) && sSpellMgr.GetSpellRank(trainerSpell->spell[0]) == 1)
+                if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->spell) && sSpellMgr.GetSpellRank(trainerSpell->spell) == 1)
 #endif
                     continue;
 

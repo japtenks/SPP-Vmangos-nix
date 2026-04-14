@@ -16,6 +16,7 @@
 #include "playerbot/AiFactory.h"
 #include "PlayerbotCommandServer.h"
 #include "MemoryMonitor.h"
+#include "playerbot/ServerSocialMgr.h"
 
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -53,6 +54,55 @@ using namespace ai;
 using namespace MaNGOS;
 
 INSTANTIATE_SINGLETON_1(RandomPlayerbotMgr);
+
+namespace
+{
+    void ObserveBotSocialState(Player* bot)
+    {
+        if (!bot)
+            return;
+
+        PlayerbotAI* ai = bot->GetPlayerbotAI();
+        if (!ai || ai->HasActivePlayerMaster() || bot->IsInCombat() || bot->InBattleGround())
+            return;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return;
+
+        const uint32 areaId = sServerSocialMgr.NormalizeAreaId(bot);
+        if (!areaId)
+            return;
+
+        float guildWeight = 1.0f;
+        TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+        if (travelTarget && travelTarget->GetDestination() &&
+            travelTarget->GetDestination()->GetPurpose() == TravelDestinationPurpose::GenericRpg)
+        {
+            guildWeight = 1.6f;
+        }
+
+        if (ai->GetSession().state == SessionState::IDLE || ai->GetSession().state == SessionState::TRAVELLING)
+            guildWeight *= 1.15f;
+
+        sServerSocialMgr.ObserveGuildArea(bot, areaId, guildWeight);
+
+        std::list<ObjectGuid> nearbyPlayers = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid>>("nearest friendly players")->Get();
+        uint32 observed = 0;
+        for (ObjectGuid guid : nearbyPlayers)
+        {
+            Player* other = sObjectMgr.GetPlayer(guid);
+            if (!other || other == bot || other->GetMapId() != bot->GetMapId())
+                continue;
+
+            const bool sameGuild = bot->GetGuildId() && bot->GetGuildId() == other->GetGuildId();
+            sServerSocialMgr.ObserveMutualSocialContact(bot, other, sameGuild);
+
+            if (++observed >= 4)
+                break;
+        }
+    }
+}
 
 #ifdef CMANGOS
 #include <boost/thread/thread.hpp>
@@ -2299,6 +2349,8 @@ bool RandomPlayerbotMgr::ProcessBot(Player* player)
     if (!player || !player->IsInWorld() || player->IsBeingTeleported() || player->GetSession()->IsLogingOut())
         return false;
 
+    ObserveBotSocialState(player);
+
     uint32 bot = player->GetGUIDLow();
 
     if (player->InBattleGround())
@@ -4070,19 +4122,34 @@ void RandomPlayerbotMgr::RandomTeleportForRpg(Player* bot, bool activeOnly)
 {
     uint32 race = bot->GetRace();
     uint32 level = bot->GetLevel();
-    sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Random teleporting bot %s for RPG (%zu locations available)", bot->GetName(), rpgLocsCacheLevel[race][level].size());
-    RandomTeleport(bot, rpgLocsCacheLevel[race][level], true, activeOnly);
+    std::vector<WorldLocation> socialLocations = rpgLocsCacheLevel[race][level];
+    const uint32 preferredAreaId = sServerSocialMgr.GetGuildPreferredArea(bot->GetGuildId());
+    if (preferredAreaId)
+    {
+        std::vector<WorldLocation> preferredLocations;
+        for (WorldLocation const& location : socialLocations)
+        {
+            if (sServerSocialMgr.NormalizeAreaId(location.mapId, location.x, location.y, location.z) == preferredAreaId)
+                preferredLocations.push_back(location);
+        }
+
+        if (!preferredLocations.empty())
+            socialLocations = preferredLocations;
+    }
+
+    sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Random teleporting bot %s for RPG (%zu locations available)", bot->GetName(), socialLocations.size());
+    RandomTeleport(bot, socialLocations, true, activeOnly);
     Refresh(bot);
 
-    //Travel cooldown for 10 minutes.
     if (bot->GetPlayerbotAI())
     {
-        AiObjectContext* context = bot->GetPlayerbotAI()->GetAiObjectContext();
-        TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+        PlayerbotAI* ai = bot->GetPlayerbotAI();
+        TravelTarget* travelTarget = ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
 
         sTravelMgr.SetNullTravelTarget(travelTarget);
-        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
-        travelTarget->SetExpireIn(10 * MINUTE * IN_MILLISECONDS);
+        ai->GetSession().Reset(SessionState::IDLE);
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
+        travelTarget->SetExpireIn(90 * IN_MILLISECONDS);
     }
 }
 
