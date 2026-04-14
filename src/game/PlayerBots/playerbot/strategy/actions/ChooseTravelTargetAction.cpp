@@ -131,6 +131,44 @@ namespace
         }
     }
 
+    bool HasNearbyQuestContinuation(Player* bot, float maxDistance = 900.0f)
+    {
+        if (!bot)
+            return false;
+
+        PlayerTravelInfo info(bot);
+        const uint32 questPurposes =
+            (uint32)TravelDestinationPurpose::QuestGiver |
+            (uint32)TravelDestinationPurpose::QuestTaker |
+            (uint32)TravelDestinationPurpose::QuestObjective1 |
+            (uint32)TravelDestinationPurpose::QuestObjective2 |
+            (uint32)TravelDestinationPurpose::QuestObjective3 |
+            (uint32)TravelDestinationPurpose::QuestObjective4;
+
+        for (TravelDestination* destination : sTravelMgr.GetDestinations(info, questPurposes, {}, false, maxDistance))
+        {
+            if (!destination)
+                continue;
+
+            const float distance = destination->DistanceTo(bot);
+            if (distance == FLT_MAX || distance > maxDistance)
+                continue;
+
+            if (destination->IsPossible(info))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool ShouldSuppressStarterRpg(Player* bot)
+    {
+        if (!bot || bot->GetLevel() > 10)
+            return false;
+
+        return HasNearbyQuestContinuation(bot);
+    }
+
     bool SessionAllowsPurpose(SessionState state, TravelDestinationPurpose purpose)
     {
         switch (state)
@@ -1347,6 +1385,9 @@ bool RequestTravelTargetAction::isUseful() {
 bool RequestTravelTargetAction::isAllowed() const
 {
     TravelDestinationPurpose actionPurpose = TravelDestinationPurpose(stoi(getQualifier()));
+
+    if (actionPurpose == TravelDestinationPurpose::GenericRpg && ShouldSuppressStarterRpg(bot))
+        return false;
 
     switch (actionPurpose)
     {
