@@ -112,3 +112,18 @@ float ServerSharedKnowledge::GetTrainerSkillConfidence(uint32 trainerEntry, uint
 {
     return GetNpcUsefulnessConfidence(trainerEntry, static_cast<uint32>(NpcKnowledgePurpose::TRAINER_SKILL), trainerClass, skillIds, mapId, cityId);
 }
+
+void ServerSharedKnowledge::RecordReagentVendorItem(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId, float delta)
+{
+    RecordNpcUsefulness(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM), requirement, itemId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM), requirement, itemId, mapId, cityId);
+}
+
+float ServerSharedKnowledge::GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, std::vector<uint32> const& itemIds, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM), requirement, itemIds, mapId, cityId);
+}

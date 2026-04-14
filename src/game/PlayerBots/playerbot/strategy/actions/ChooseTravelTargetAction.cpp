@@ -3,6 +3,7 @@
 #include "playerbot/LootObjectStack.h"
 #include "ChooseTravelTargetAction.h"
 #include "playerbot/PlayerbotAIConfig.h"
+#include "playerbot/ServerSharedKnowledge.h"
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
@@ -132,6 +133,65 @@ namespace
             return objectiveDestination->GetObjective();
 
         return 0;
+    }
+
+    uint32 GetKnowledgeCityId(Player* bot)
+    {
+        if (!bot)
+            return 0;
+
+        AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(sServerFacade.GetAreaId(bot));
+        while (areaEntry && areaEntry->ZoneId)
+        {
+            AreaTableEntry const* parentArea = GetAreaEntryByAreaID(areaEntry->ZoneId);
+            if (!parentArea || parentArea == areaEntry)
+                break;
+
+            areaEntry = parentArea;
+        }
+
+        return areaEntry ? areaEntry->Id : bot->GetZoneId();
+    }
+
+    uint32 GetReagentRequirement(Player* bot, uint32 itemId)
+    {
+        if (!bot || !itemId)
+            return 1;
+
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+        if (!proto)
+            return 1;
+
+        static const uint32 trackedSkills[] =
+        {
+            SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_COOKING, SKILL_ENCHANTING,
+            SKILL_ENGINEERING, SKILL_FIRST_AID, SKILL_LEATHERWORKING, SKILL_TAILORING
+        };
+
+        for (uint32 skillId : trackedSkills)
+        {
+            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, skillId))
+                return skillId;
+        }
+
+        return 1;
+    }
+
+    float GetNpcPreferenceScore(Player* bot, float knowledgeConfidence, uint32 purpose)
+    {
+        if (!bot || !bot->GetPlayerbotAI())
+            return knowledgeConfidence;
+
+        const ArchetypeWeights& weights = bot->GetPlayerbotAI()->GetArchetypeWeights();
+        const float knowledgeMaturity = sServerSharedKnowledge.GetKnowledgeMaturity(purpose);
+        const float routineBias = 0.75f + (0.25f * weights.routineTolerance);
+        const float explorationBias = 0.60f + (0.40f * weights.explorationRadiusBias);
+        const float knowledgeBonus = knowledgeConfidence * weights.knowledgeWeight * routineBias * (0.35f + (0.65f * knowledgeMaturity));
+
+        if (knowledgeConfidence > 0.0f)
+            return knowledgeBonus;
+
+        return 0.10f * weights.curiosityWeight * explorationBias * (1.0f - (0.70f * knowledgeMaturity));
     }
 
     InterruptTier GetTravelTargetInterruptTier(const TravelTarget* target)
@@ -1524,6 +1584,7 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     {
         std::set<int32> reagentVendorEntrySet;
         std::vector<uint32> missingReagents = NeedsProfessionReagentsValue::GetMissingReagents(ai);
+        const uint32 cityId = GetKnowledgeCityId(bot);
         for (uint32 reagentId : missingReagents)
         {
             std::list<int32> vendorEntries = GAI_VALUE2(std::list<int32>, "item vendor list", reagentId);
@@ -1532,6 +1593,25 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
         }
 
         std::vector<int32> reagentVendorEntries(reagentVendorEntrySet.begin(), reagentVendorEntrySet.end());
+        std::unordered_map<int32, float> vendorScores;
+
+        for (int32 entry : reagentVendorEntries)
+        {
+            float vendorConfidence = 0.0f;
+            for (uint32 reagentId : missingReagents)
+            {
+                vendorConfidence = std::max(vendorConfidence,
+                    sServerSharedKnowledge.GetReagentVendorItemConfidence(
+                        entry, GetReagentRequirement(bot, reagentId), reagentId, bot->GetMapId(), cityId));
+            }
+
+            vendorScores[entry] = GetNpcPreferenceScore(bot, vendorConfidence, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM));
+        }
+
+        std::stable_sort(reagentVendorEntries.begin(), reagentVendorEntries.end(), [&](int32 left, int32 right)
+        {
+            return vendorScores[left] > vendorScores[right];
+        });
 
         if (reagentVendorEntries.empty())
         {

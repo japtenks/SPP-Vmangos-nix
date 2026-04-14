@@ -11,6 +11,7 @@ enum class NpcKnowledgePurpose : uint8
 {
     TRAINER_TEACHING = 1,
     TRAINER_SKILL = 2,
+    REAGENT_VENDOR_ITEM = 3,
 };
 
 struct NpcUsefulnessKnowledgeKey
@@ -56,6 +57,10 @@ public:
     void RecordTrainerSkill(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
     float GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, uint32 skillId, uint32 mapId, uint32 cityId = 0) const;
     float GetTrainerSkillConfidence(uint32 trainerEntry, uint32 trainerClass, std::vector<uint32> const& skillIds, uint32 mapId, uint32 cityId = 0) const;
+
+    void RecordReagentVendorItem(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
+    float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0) const;
+    float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, std::vector<uint32> const& itemIds, uint32 mapId, uint32 cityId = 0) const;
 
 private:
     struct NpcUsefulnessKnowledgeKeyHash

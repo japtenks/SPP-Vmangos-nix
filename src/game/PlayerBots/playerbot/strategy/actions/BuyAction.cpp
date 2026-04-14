@@ -1,13 +1,60 @@
 
 #include "playerbot/playerbot.h"
 #include "BuyAction.h"
+#include "playerbot/ServerSharedKnowledge.h"
 #include "playerbot/strategy/ItemVisitors.h"
 #include "playerbot/strategy/values/ItemCountValue.h"
+#include "playerbot/strategy/values/ItemUsageValue.h"
 #include "playerbot/strategy/values/BudgetValues.h"
 #include "playerbot/strategy/values/MountValues.h"
 #include "playerbot/strategy/values/GuildValues.h"
 
 using namespace ai;
+
+namespace
+{
+    uint32 GetKnowledgeCityId(Player* bot)
+    {
+        if (!bot)
+            return 0;
+
+        AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(sServerFacade.GetAreaId(bot));
+        while (areaEntry && areaEntry->ZoneId)
+        {
+            AreaTableEntry const* parentArea = GetAreaEntryByAreaID(areaEntry->ZoneId);
+            if (!parentArea || parentArea == areaEntry)
+                break;
+
+            areaEntry = parentArea;
+        }
+
+        return areaEntry ? areaEntry->Id : bot->GetZoneId();
+    }
+
+    uint32 GetReagentRequirement(Player* bot, uint32 itemId)
+    {
+        if (!bot || !itemId)
+            return 1;
+
+        ItemPrototype const* proto = sObjectMgr.GetItemPrototype(itemId);
+        if (!proto)
+            return 1;
+
+        static const uint32 trackedSkills[] =
+        {
+            SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_COOKING, SKILL_ENCHANTING,
+            SKILL_ENGINEERING, SKILL_FIRST_AID, SKILL_LEATHERWORKING, SKILL_TAILORING
+        };
+
+        for (uint32 skillId : trackedSkills)
+        {
+            if (bot->HasSkill(skillId) && ItemUsageValue::IsItemUsedBySkill(proto, skillId))
+                return skillId;
+        }
+
+        return 1;
+    }
+}
 
 bool BuyAction::Execute(Event& event)
 {
@@ -182,6 +229,7 @@ bool BuyAction::Execute(Event& event)
             if (AI_VALUE(bool, "needs profession reagents"))
             {
                 std::vector<uint32> missingReagents = NeedsProfessionReagentsValue::GetMissingReagents(ai);
+                const uint32 cityId = GetKnowledgeCityId(bot);
 
                 for (uint32 reagentId : missingReagents)
                 {
@@ -210,6 +258,14 @@ bool BuyAction::Execute(Event& event)
                         result |= didBuy;
                         if (!didBuy)
                             break;
+
+                        sServerSharedKnowledge.RecordReagentVendorItem(
+                            pCreature->GetEntry(),
+                            GetReagentRequirement(bot, reagentId),
+                            reagentId,
+                            bot->GetMapId(),
+                            cityId,
+                            0.08f);
 
                         currentCount = ai->GetInventoryItemsCountWithId(reagentId);
                         RESET_AI_VALUE2(std::list<Item*>, "inventory items", ChatHelper::formatItem(reagentProto));
