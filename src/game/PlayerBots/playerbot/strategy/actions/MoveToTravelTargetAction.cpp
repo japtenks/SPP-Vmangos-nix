@@ -151,10 +151,23 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         ai->TellPlayerNoFacing(GetMaster(), out);
     }
 
+    ai->TellDebug(ai->GetMaster(),
+        "[PBTRACE] move_to_travel attempt dest=\"" + target->GetDestination()->GetTitle() +
+        "\" map=" + std::to_string(static_cast<uint32>(mapId)) +
+        " point={" + std::to_string(static_cast<int32>(x)) + "," + std::to_string(static_cast<int32>(y)) + "," + std::to_string(static_cast<int32>(z)) + "}" +
+        " dist=" + std::to_string(static_cast<uint32>(location.distance(bot))) +
+        " retries=" + std::to_string(static_cast<uint32>(target->GetRetryCount(true))),
+        "debug travel");
+
     canMove = MoveTo(mapId, x, y, z, false, false);
 
     if (!canMove)
     {
+        ai->TellDebug(ai->GetMaster(),
+            "[PBTRACE] move_to_travel failed dest=\"" + target->GetDestination()->GetTitle() +
+            "\" dist=" + std::to_string(static_cast<uint32>(location.distance(bot))) +
+            " pos_str=" + target->GetPosStr(),
+            "debug travel");
         target->IncRetry(true);
 
         if (target->IsMaxRetry(true))
@@ -251,8 +264,12 @@ bool MoveToTravelTargetAction::isUseful()
 
     if (!travelTarget->IsForced())
         if (!AI_VALUE2(bool, "can free move to", travelTarget->GetPosStr()))
+        {
+            ai->TellDebug(ai->GetMaster(),
+                "[PBTRACE] move_to_travel blocked by can free move to pos_str=" + travelTarget->GetPosStr(),
+                "debug travel");
             return false;
+        }
 
     return true;
 }
-
