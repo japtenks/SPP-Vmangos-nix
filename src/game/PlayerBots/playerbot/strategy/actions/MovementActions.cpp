@@ -126,15 +126,19 @@ bool MovementAction::HandleTransportRecovery()
     return false;
 }
 
-void MovementAction::BeginTransportWait(LastMovement& lastMove, uint32 transportEntry, const WorldPosition& dockPosition, GenericTransport* liveTransport)
+void MovementAction::BeginTransportWait(LastMovement& lastMove, const TransportLeg& transportLeg, const WorldPosition& dockPosition, GenericTransport* liveTransport)
 {
     const time_t now = time(0);
-    const uint32 waitWindowMs = TransportSchedule::GetWaitWindowMs(transportEntry, dockPosition, liveTransport);
+    if (!transportLeg.IsValid())
+        return;
 
-    if (lastMove.lastTransportEntry != transportEntry || !lastMove.transportWaitStarted || now > lastMove.transportWaitDeadline)
+    const uint32 waitWindowMs = TransportSchedule::GetWaitWindowMs(transportLeg.transportEntry, dockPosition, liveTransport);
+
+    if (lastMove.lastTransportEntry != transportLeg.transportEntry || !lastMove.transportWaitStarted || now > lastMove.transportWaitDeadline)
         lastMove.transportWaitStarted = now;
 
-    lastMove.lastTransportEntry = transportEntry;
+    lastMove.lastTransportEntry = transportLeg.transportEntry;
+    lastMove.transportLeg = transportLeg;
     lastMove.transportWaitDeadline = lastMove.transportWaitStarted + std::max<time_t>(1, waitWindowMs / 1000);
 }
 
@@ -149,6 +153,7 @@ bool MovementAction::HandleTransportWaitTimeout(LastMovement& lastMove)
 
     ai->SetTransportState(TransportState::TRANSPORT_FAILED);
     lastMove.lastTransportEntry = 0;
+    lastMove.transportLeg.Clear();
     lastMove.transportWaitStarted = 0;
     lastMove.transportWaitDeadline = 0;
     lastMove.lastPath.clear();
@@ -748,6 +753,7 @@ bool MovementAction::WaitForTransport()
             return true;
 
         lastMove.lastTransportEntry = 0;
+        lastMove.transportLeg.Clear();
         lastMove.transportWaitStarted = 0;
         lastMove.transportWaitDeadline = 0;
         if (ai->GetTransportState() == TransportState::TRANSPORT_WAITING || ai->GetTransportState() == TransportState::TRANSPORT_BOARDING)
@@ -758,12 +764,16 @@ bool MovementAction::WaitForTransport()
     TravelNodePathType pathType;
     uint32 entry;
     WorldPosition telePosition;
+    TransportLeg transportLeg;
 
-    WorldPosition movePoint = lastMove.lastPath.getNextPoint(bot, 0.0f, pathType, entry, true, telePosition);
+    WorldPosition movePoint = lastMove.lastPath.getNextPoint(bot, 0.0f, pathType, entry, true, telePosition, &transportLeg);
+
+    if (!transportLeg.IsValid() && lastMove.transportLeg.IsValid())
+        transportLeg = lastMove.transportLeg;
 
     if (!UseTransport(ai, entry, movePoint))
     {
-        BeginTransportWait(lastMove, entry, movePoint, bot->GetTransport());
+        BeginTransportWait(lastMove, transportLeg, movePoint, bot->GetTransport());
         ai->SetTransportState(bot->GetTransport() ? TransportState::TRANSPORT_BOARDING : TransportState::TRANSPORT_WAITING, bot->GetTransport());
         return true;
     }
@@ -771,6 +781,7 @@ bool MovementAction::WaitForTransport()
     bot->TeleportTo(telePosition.getMapId(), telePosition.getX(), telePosition.getY(), telePosition.getZ(), telePosition.getO(), 0);
 
     lastMove.lastTransportEntry = 0;
+    lastMove.transportLeg.Clear();
     lastMove.transportWaitStarted = 0;
     lastMove.transportWaitDeadline = 0;
     ai->SetTransportState(TransportState::TRANSPORT_COMPLETE);
@@ -852,6 +863,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
     float totalDistance = startPosition.distance(endPosition);    //Total distance to where we want to go
     float maxDistChange = totalDistance * 0.1;                    //Maximum change between previous destination before needing a recalculation
     TravelPath movePath;
+    TransportLeg transportLeg;
 
     if (totalDistance < minDist)
     {
@@ -972,7 +984,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         TravelNodePathType pathType = TravelNodePathType::none;
         uint32 entry = 0;
         WorldPosition telePosition = WorldPosition();
-        movePosition = movePath.getNextPoint(startPosition, maxDist, pathType, entry, bot->GetTransport(), telePosition);
+        movePosition = movePath.getNextPoint(startPosition, maxDist, pathType, entry, bot->GetTransport(), telePosition, &transportLeg);
 
         if (pathType == TravelNodePathType::staticPortal && entry)// && !ai->isRealPlayer())
         {
@@ -1095,7 +1107,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
             if (!usedTransport)
             {
-                BeginTransportWait(lastMove, entry, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
+                BeginTransportWait(lastMove, transportLeg, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
 
                 WaitForReach(1000.0f);
             }
@@ -1106,7 +1118,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     return bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), movePosition.getO(), 0);
                 }
 
-                BeginTransportWait(lastMove, entry, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
+                BeginTransportWait(lastMove, transportLeg, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
 
                 WaitForReach(1000.0f);
             }
@@ -1316,7 +1328,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
         TravelNodePathType pathType;
         uint32 entry;
         WorldPosition telepos;
-        movePosition = movePath.getNextPoint(startPosition, maxDist, pathType, entry, false, telepos);
+        movePosition = movePath.getNextPoint(startPosition, maxDist, pathType, entry, false, telepos, &transportLeg);
     }
 
     //Stop the path when we might get aggro.

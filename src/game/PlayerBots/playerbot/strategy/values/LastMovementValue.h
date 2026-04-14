@@ -19,6 +19,7 @@ namespace ai
             lastFollow = other.lastFollow;
             lastAreaTrigger = other.lastAreaTrigger;
             lastTransportEntry = other.lastTransportEntry;
+            transportLeg = other.transportLeg;
             transportWaitStarted = other.transportWaitStarted;
             transportWaitDeadline = other.transportWaitDeadline;
             lastMoveShort = other.lastMoveShort;
@@ -37,6 +38,7 @@ namespace ai
             lastFollow = NULL;
             lastAreaTrigger = 0;
             lastTransportEntry = 0;
+            transportLeg.Clear();
             transportWaitStarted = 0;
             transportWaitDeadline = 0;
             lastFlee = 0;
@@ -64,6 +66,7 @@ namespace ai
         Unit* lastFollow;
         uint32 lastAreaTrigger;
         uint32 lastTransportEntry;
+        TransportLeg transportLeg;
         time_t transportWaitStarted;
         time_t transportWaitDeadline;
         time_t lastFlee;

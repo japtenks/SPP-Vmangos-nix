@@ -956,10 +956,13 @@ bool TravelPath::shouldMoveToNextPoint(WorldPosition startPos, std::vector<PathN
 }
 
 //Next position to move to
-WorldPosition TravelPath::getNextPoint(WorldPosition startPos, float maxDist, TravelNodePathType& pathType, uint32& entry, bool onTransport, WorldPosition& telePosition)
+WorldPosition TravelPath::getNextPoint(WorldPosition startPos, float maxDist, TravelNodePathType& pathType, uint32& entry, bool onTransport, WorldPosition& telePosition, TransportLeg* transportLeg)
 {
     if (getPath().empty())
         return WorldPosition();
+
+    if (transportLeg)
+        transportLeg->Clear();
 
     auto beg = fullPath.begin();
     auto ed = fullPath.end();
@@ -1050,6 +1053,12 @@ WorldPosition TravelPath::getNextPoint(WorldPosition startPos, float maxDist, Tr
     {
         pathType = TravelNodePathType::transport;
         entry = nextP->entry;
+        if (transportLeg)
+        {
+            transportLeg->transportEntry = entry;
+            transportLeg->boardPoint = startP->point;
+            transportLeg->dockPoint = prevP->point;
+        }
 
         if (!onTransport)
         {
@@ -1063,6 +1072,8 @@ WorldPosition TravelPath::getNextPoint(WorldPosition startPos, float maxDist, Tr
             if (p->type != PathNodeType::NODE_TRANSPORT || (p->entry && p->entry != entry))
             {
                 telePosition = p->point; //We want to teleport here.
+                if (transportLeg)
+                    transportLeg->exitPoint = p->point;
                 cutTo(*prevP, false);
                 return nextPoint;        //Bot should dock here.
             }
@@ -1077,12 +1088,20 @@ WorldPosition TravelPath::getNextPoint(WorldPosition startPos, float maxDist, Tr
     {
         pathType = TravelNodePathType::areaTrigger;
         entry = 0;
+        if (transportLeg)
+        {
+            transportLeg->transportEntry = nextP->entry;
+            transportLeg->dockPoint = startP->point;
+            transportLeg->teleportBetweenDocks = true;
+        }
 
         for (auto p = startP + 1; p != ed; p++) //Move along the transport path to the end of the boat ride. 
         {
             if (p->type != PathNodeType::NODE_TRANSPORT)
             {
                 nextPoint = p->point;
+                if (transportLeg)
+                    transportLeg->exitPoint = p->point;
                 cutTo(*p, false);
                 return nextPoint; //We want to move here.
             }

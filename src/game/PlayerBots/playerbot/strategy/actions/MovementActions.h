@@ -33,7 +33,7 @@ namespace ai
 
         bool WaitForTransport();
         bool HandleTransportRecovery();
-        void BeginTransportWait(LastMovement& lastMove, uint32 transportEntry, const WorldPosition& dockPosition, GenericTransport* liveTransport = nullptr);
+        void BeginTransportWait(LastMovement& lastMove, const TransportLeg& transportLeg, const WorldPosition& dockPosition, GenericTransport* liveTransport = nullptr);
         bool HandleTransportWaitTimeout(LastMovement& lastMove);
 
         bool MoveTo(uint32 mapId, float x, float y, float z, bool idle = false, bool react = false, bool noPath = false, bool ignoreEnemyTargets = false);

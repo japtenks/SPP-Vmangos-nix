@@ -269,6 +269,25 @@ namespace ai
         bool isWalkable() const { return (uint8)type <= (uint8)PathNodeType::NODE_NODE; }
     };
 
+    struct TransportLeg
+    {
+        uint32 transportEntry = 0;
+        WorldPosition boardPoint;
+        WorldPosition dockPoint;
+        WorldPosition exitPoint;
+        bool teleportBetweenDocks = false;
+
+        bool IsValid() const { return transportEntry != 0; }
+        void Clear()
+        {
+            transportEntry = 0;
+            boardPoint = WorldPosition();
+            dockPoint = WorldPosition();
+            exitPoint = WorldPosition();
+            teleportBetweenDocks = false;
+        }
+    };
+
     //A complete list of points the bots has to walk to or teleport to.
     class TravelPath
     {
@@ -295,7 +314,7 @@ namespace ai
 
         bool makeShortCut(WorldPosition startPos, float maxDist, Unit* bot);
         bool shouldMoveToNextPoint(WorldPosition startPos, std::vector<PathNodePoint>::iterator beg, std::vector<PathNodePoint>::iterator ed, std::vector<PathNodePoint>::iterator p, float& moveDist, float maxDist);
-        WorldPosition getNextPoint(WorldPosition startPos, float maxDist, TravelNodePathType& pathType, uint32& entry, bool onTransport, WorldPosition& telePosition);
+        WorldPosition getNextPoint(WorldPosition startPos, float maxDist, TravelNodePathType& pathType, uint32& entry, bool onTransport, WorldPosition& telePosition, TransportLeg* transportLeg = nullptr);
 
         std::ostringstream print();
     private:
