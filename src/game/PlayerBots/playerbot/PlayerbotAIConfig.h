@@ -139,6 +139,7 @@ public:
     std::list<std::string> toggleAlwaysOnlineChars;
     bool enableRandomTeleports;
     bool enableMinimalMove;
+    bool enableDeadRecoveryTeleport;
     uint32 randomBotTeleportDistance;
     bool randomBotTeleportNearPlayer;
     uint32 transportTeleportType;
@@ -430,4 +431,3 @@ private:
 };
 
 #define sPlayerbotAIConfig MaNGOS::Singleton<PlayerbotAIConfig>::Instance()
-

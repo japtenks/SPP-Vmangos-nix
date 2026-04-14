@@ -178,7 +178,9 @@ bool FindCorpseAction::Execute(Event& event)
     //Actual mobing part.
     bool moved = false;
 
-    if (!ai->AllowActivity(DETAILED_MOVE_ACTIVITY) && !ai->HasPlayerNearby(moveToPos))
+    if (sPlayerbotAIConfig.enableDeadRecoveryTeleport &&
+        !ai->AllowActivity(DETAILED_MOVE_ACTIVITY) &&
+        !ai->HasPlayerNearby(moveToPos))
     {
         uint32 delay = sServerFacade.GetDistance2d(bot, corpse) / bot->GetSpeed(MOVE_RUN); //Time a bot would take to travel to it's corpse.
         delay = std::min(delay, uint32(10 * MINUTE)); //Cap time to get to corpse at 10 minutes.
@@ -298,7 +300,10 @@ bool SpiritHealerAction::Execute(Event& event)
     shouldTeleportToGY = deadTime > uint32(10 * MINUTE);
 
     // Check if we can teleport to the graveyard when nobody is looking
-    if (!shouldTeleportToGY && !ai->AllowActivity(DETAILED_MOVE_ACTIVITY) && !ai->HasPlayerNearby(WorldPosition(grave)))
+    if (!shouldTeleportToGY &&
+        sPlayerbotAIConfig.enableDeadRecoveryTeleport &&
+        !ai->AllowActivity(DETAILED_MOVE_ACTIVITY) &&
+        !ai->HasPlayerNearby(WorldPosition(grave)))
     {
         //Time a bot would take to travel to it's corpse.
         uint32 delay = sServerFacade.GetDistance2d(bot, corpse) / bot->GetSpeed(MOVE_RUN);

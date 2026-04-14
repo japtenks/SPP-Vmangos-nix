@@ -591,6 +591,10 @@ AiPlayerbot.ReactDelay = 100
 # Inactivity delay
 AiPlayerbot.PassiveDelay = 10000
 
+# Allow dead bots to teleport during corpse/graveyard recovery when no other player is nearby.
+# This only affects ghost recovery shortcuts and does not change live travel movement.
+#AiPlayerbot.EnableDeadRecoveryTeleport = 0
+
 # Minimum delay between repeating actions (chat messages, emotes etc)
 AiPlayerbot.RepeatDelay = 5000
 
