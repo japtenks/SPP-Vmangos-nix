@@ -9,6 +9,8 @@
 
 namespace ai
 {
+    class LastMovement;
+
     class MovementAction : public Action
     {
     public:
@@ -31,6 +33,8 @@ namespace ai
 
         bool WaitForTransport();
         bool HandleTransportRecovery();
+        void BeginTransportWait(LastMovement& lastMove, uint32 transportEntry, const WorldPosition& dockPosition, GenericTransport* liveTransport = nullptr);
+        bool HandleTransportWaitTimeout(LastMovement& lastMove);
 
         bool MoveTo(uint32 mapId, float x, float y, float z, bool idle = false, bool react = false, bool noPath = false, bool ignoreEnemyTargets = false);
         bool MoveTo(Unit* target, float distance = 0.0f);

@@ -678,10 +678,11 @@ bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotSta
 
 bool PlayerbotAI::HasActiveRtscOverlay() const
 {
+    PlayerbotAI* mutableAi = const_cast<PlayerbotAI*>(this);
     return controlLaneState.rtscOverlayActive ||
-           HasStrategy("rtsc", BotState::BOT_STATE_NON_COMBAT) ||
-           HasStrategy("rtsc", BotState::BOT_STATE_COMBAT) ||
-           HasStrategy("rtsc", BotState::BOT_STATE_REACTION);
+           mutableAi->HasStrategy("rtsc", BotState::BOT_STATE_NON_COMBAT) ||
+           mutableAi->HasStrategy("rtsc", BotState::BOT_STATE_COMBAT) ||
+           mutableAi->HasStrategy("rtsc", BotState::BOT_STATE_REACTION);
 }
 
 void PlayerbotAI::OpenMaintenanceBreakpoint(const std::string& reason, uint32 durationSeconds)

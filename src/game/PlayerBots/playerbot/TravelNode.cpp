@@ -1,4 +1,5 @@
 #include "TravelNode.h"
+#include "playerbot/TransportSchedule.h"
 #include "playerbot/TravelMgr.h"
 
 #include <iomanip>
@@ -207,7 +208,9 @@ float TravelNodePath::getCost(Unit* unit, uint32 cGold)
         return -1;
 
 
-    if (getPathType() != TravelNodePathType::walk)
+    if (getPathType() == TravelNodePathType::transport)
+        timeCost = (extraCost + (TransportSchedule::GetAverageWaitMs(uint32(pathObject)) / 1000.0f)) * modifier;
+    else if (getPathType() != TravelNodePathType::walk)
         timeCost = extraCost * modifier;
     else
         timeCost = (runDistance / speed + swimDistance / swimSpeed) * modifier;

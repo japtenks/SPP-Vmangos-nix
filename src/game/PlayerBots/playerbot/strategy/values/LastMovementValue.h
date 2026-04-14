@@ -19,6 +19,8 @@ namespace ai
             lastFollow = other.lastFollow;
             lastAreaTrigger = other.lastAreaTrigger;
             lastTransportEntry = other.lastTransportEntry;
+            transportWaitStarted = other.transportWaitStarted;
+            transportWaitDeadline = other.transportWaitDeadline;
             lastMoveShort = other.lastMoveShort;
             lastMoveShortStart = other.lastMoveShortStart;
             lastPath = other.lastPath;
@@ -35,6 +37,8 @@ namespace ai
             lastFollow = NULL;
             lastAreaTrigger = 0;
             lastTransportEntry = 0;
+            transportWaitStarted = 0;
+            transportWaitDeadline = 0;
             lastFlee = 0;
             nextTeleport = 0;
             moveEvent = Event();
@@ -60,6 +64,8 @@ namespace ai
         Unit* lastFollow;
         uint32 lastAreaTrigger;
         uint32 lastTransportEntry;
+        time_t transportWaitStarted;
+        time_t transportWaitDeadline;
         time_t lastFlee;
         WorldPosition lastMoveShortStart;
         WorldPosition lastMoveShort;

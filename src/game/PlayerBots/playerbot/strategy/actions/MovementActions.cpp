@@ -12,6 +12,7 @@
 #include "playerbot/strategy/values/Stances.h"
 #include "TargetedMovementGenerator.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/TransportSchedule.h"
 // Transports.h not in vmangos
 #ifdef MANGOSBOT_TWO
 #include "Vehicle.h"
@@ -113,7 +114,7 @@ bool MovementAction::HandleTransportRecovery()
         MotionMaster& mm = *bot->GetMotionMaster();
         ai->StopMoving();
         mm.Clear();
-        mm.MovePoint(shore.getMapId(), Position(shore.getX(), shore.getY(), shore.getZ(), 0.f));
+        mm.MovePoint(0, shore.getX(), shore.getY(), shore.getZ());
         AI_VALUE(LastMovement&, "last movement").setShort(WorldPosition(bot), shore);
         return true;
     }
@@ -123,6 +124,40 @@ bool MovementAction::HandleTransportRecovery()
         return ai->DoSpecificAction("hearthstone", Event("transport recovery"), true);
 
     return false;
+}
+
+void MovementAction::BeginTransportWait(LastMovement& lastMove, uint32 transportEntry, const WorldPosition& dockPosition, GenericTransport* liveTransport)
+{
+    const time_t now = time(0);
+    const uint32 waitWindowMs = TransportSchedule::GetWaitWindowMs(transportEntry, dockPosition, liveTransport);
+
+    if (lastMove.lastTransportEntry != transportEntry || !lastMove.transportWaitStarted || now > lastMove.transportWaitDeadline)
+        lastMove.transportWaitStarted = now;
+
+    lastMove.lastTransportEntry = transportEntry;
+    lastMove.transportWaitDeadline = lastMove.transportWaitStarted + std::max<time_t>(1, waitWindowMs / 1000);
+}
+
+bool MovementAction::HandleTransportWaitTimeout(LastMovement& lastMove)
+{
+    if (!lastMove.lastTransportEntry || !lastMove.transportWaitDeadline)
+        return false;
+
+    const time_t now = time(0);
+    if (now <= lastMove.transportWaitDeadline)
+        return false;
+
+    ai->SetTransportState(TransportState::TRANSPORT_FAILED);
+    lastMove.lastTransportEntry = 0;
+    lastMove.transportWaitStarted = 0;
+    lastMove.transportWaitDeadline = 0;
+    lastMove.lastPath.clear();
+
+    if (AI_VALUE2(bool, "action useful", "hearthstone") && bot->IsAlive())
+        return ai->DoSpecificAction("hearthstone", Event("transport timeout"), true);
+
+    SetDuration(5000);
+    return true;
 }
 
 void MovementAction::CreateWp(Player* wpOwner, float x, float y, float z, float o, uint32 entry, bool important)
@@ -709,7 +744,12 @@ bool MovementAction::WaitForTransport()
 
     if (!transport || transport->GetEntry() != lastMove.lastTransportEntry || lastMove.lastPath.getPath().front().type != PathNodeType::NODE_TRANSPORT || lastMove.lastPath.getPath().front().entry != lastMove.lastTransportEntry)
     {
+        if (HandleTransportWaitTimeout(lastMove))
+            return true;
+
         lastMove.lastTransportEntry = 0;
+        lastMove.transportWaitStarted = 0;
+        lastMove.transportWaitDeadline = 0;
         if (ai->GetTransportState() == TransportState::TRANSPORT_WAITING || ai->GetTransportState() == TransportState::TRANSPORT_BOARDING)
             ai->SetTransportState(TransportState::TRANSPORT_NONE);
         return false;
@@ -723,6 +763,7 @@ bool MovementAction::WaitForTransport()
 
     if (!UseTransport(ai, entry, movePoint))
     {
+        BeginTransportWait(lastMove, entry, movePoint, bot->GetTransport());
         ai->SetTransportState(bot->GetTransport() ? TransportState::TRANSPORT_BOARDING : TransportState::TRANSPORT_WAITING, bot->GetTransport());
         return true;
     }
@@ -730,6 +771,8 @@ bool MovementAction::WaitForTransport()
     bot->TeleportTo(telePosition.getMapId(), telePosition.getX(), telePosition.getY(), telePosition.getZ(), telePosition.getO(), 0);
 
     lastMove.lastTransportEntry = 0;
+    lastMove.transportWaitStarted = 0;
+    lastMove.transportWaitDeadline = 0;
     ai->SetTransportState(TransportState::TRANSPORT_COMPLETE);
     return false;
 }
@@ -1052,8 +1095,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
             if (!usedTransport)
             {
-                if (bot->GetTransport())
-                    lastMove.lastTransportEntry = entry;
+                BeginTransportWait(lastMove, entry, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
 
                 WaitForReach(1000.0f);
             }
@@ -1064,7 +1106,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     return bot->TeleportTo(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), movePosition.getO(), 0);
                 }
 
-                lastMove.lastTransportEntry = entry;
+                BeginTransportWait(lastMove, entry, bot->GetTransport() ? telePosition : movePosition, bot->GetTransport());
 
                 WaitForReach(1000.0f);
             }
