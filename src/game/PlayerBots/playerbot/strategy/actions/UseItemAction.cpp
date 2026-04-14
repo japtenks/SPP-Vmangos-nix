@@ -220,6 +220,7 @@ bool IsTransientUseItemFailure(SpellCastResult result)
     {
         case SPELL_FAILED_CASTER_DEAD:
         case SPELL_FAILED_NO_PET:
+        case SPELL_FAILED_NOT_STANDING:
         case SPELL_FAILED_STUNNED:
             return true;
         default:

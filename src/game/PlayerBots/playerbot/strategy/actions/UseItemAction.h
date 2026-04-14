@@ -710,7 +710,9 @@ namespace ai
             if (!UseInventoryItem(requester, name))
                 return false;
 
-            if (AI_VALUE(bool, "should eat"))
+            if (AI_VALUE(bool, "should eat") &&
+                bot->GetStandState() == UNIT_STAND_STATE_STAND &&
+                !bot->HasAuraType(SPELL_AURA_MOD_REGEN))
                 UseInventoryItem(requester, "food");
 
             return true;
@@ -718,7 +720,9 @@ namespace ai
 
         bool isUseful() override
         {
-            return UseAction::isUseful() && AI_VALUE(bool, "should drink");
+            return UseAction::isUseful() &&
+                   AI_VALUE(bool, "should drink") &&
+                   !bot->HasAuraType(SPELL_AURA_MOD_POWER_REGEN);
         }
 
         bool isPossible() override
@@ -788,7 +792,9 @@ namespace ai
             if (!UseInventoryItem(requester, name))
                 return false;
 
-            if (AI_VALUE(bool, "should drink"))
+            if (AI_VALUE(bool, "should drink") &&
+                bot->GetStandState() == UNIT_STAND_STATE_STAND &&
+                !bot->HasAuraType(SPELL_AURA_MOD_POWER_REGEN))
                 UseInventoryItem(requester, "drink");
 
             return true;
@@ -796,7 +802,9 @@ namespace ai
 
         bool isUseful() override
         {
-            return UseAction::isUseful() && AI_VALUE(bool, "should eat");
+            return UseAction::isUseful() &&
+                   AI_VALUE(bool, "should eat") &&
+                   !bot->HasAuraType(SPELL_AURA_MOD_REGEN);
         }
 
         bool isPossible() override
