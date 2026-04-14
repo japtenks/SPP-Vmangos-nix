@@ -40,14 +40,14 @@ namespace
 
     uint32 GetPreferredArmorSubclass(Player* bot, uint32 /*specId*/)
     {
-        switch (bot->getClass())
+        switch (bot->GetClass())
         {
         case CLASS_WARRIOR:
         case CLASS_PALADIN:
-            return bot->getLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_PLATE : ITEM_SUBCLASS_ARMOR_MAIL;
+            return bot->GetLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_PLATE : ITEM_SUBCLASS_ARMOR_MAIL;
         case CLASS_HUNTER:
         case CLASS_SHAMAN:
-            return bot->getLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_MAIL : ITEM_SUBCLASS_ARMOR_LEATHER;
+            return bot->GetLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_MAIL : ITEM_SUBCLASS_ARMOR_LEATHER;
         case CLASS_ROGUE:
         case CLASS_DRUID:
             return ITEM_SUBCLASS_ARMOR_LEATHER;
