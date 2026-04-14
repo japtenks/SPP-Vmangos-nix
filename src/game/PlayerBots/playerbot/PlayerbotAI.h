@@ -666,6 +666,7 @@ public:
     void OnCombatEnded();
     void OnDeath();
     void OnResurrected();
+    void ResetMovementSessionState();
     
     void SetActionDuration(const Action* action);
     void SetActionDuration(uint32 duration);

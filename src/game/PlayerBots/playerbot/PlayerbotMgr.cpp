@@ -347,7 +347,7 @@ void PlayerbotHolder::DisablePlayerBot(uint32 guid, bool logOutPlayer)
         if (logOutPlayer && bot->GetPlayerbotAI()->IsRealPlayer() && bot->GetGroup() && sPlayerbotAIConfig.IsFreeAltBot(guid))
             // SetOffline not in vmangos //Prevent groupkick
         bot->GetPlayerbotAI()->TellPlayer(bot->GetPlayerbotAI()->GetMaster(), BOT_TEXT("goodbye"));
-        bot->GetPlayerbotAI()->StopMoving();
+        bot->GetPlayerbotAI()->ResetMovementSessionState();
         MotionMaster& mm = *bot->GetMotionMaster();
         mm.Clear();
 

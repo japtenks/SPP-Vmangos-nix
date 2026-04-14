@@ -1500,7 +1500,7 @@ void PlayerbotAI::OnDeath()
     if (!IsStateActive(BotState::BOT_STATE_DEAD) && !sServerFacade.IsAlive(bot))
     {
         DiscardFrameworkSession("death");
-        StopMoving();
+        ResetMovementSessionState();
 
         Player* master = GetMaster();
         AiObjectContext* context = aiObjectContext;
@@ -1767,6 +1767,20 @@ void PlayerbotAI::HandleTeleportAck()
     Reset();
 }
 
+void PlayerbotAI::ResetMovementSessionState()
+{
+    RESET_AI_VALUE(LastMovement&, "last movement");
+    RESET_AI_VALUE(LastMovement&, "last taxi");
+    RESET_AI_VALUE(uint32, "last area trigger");
+
+    SetTransportState(TransportState::TRANSPORT_NONE);
+    StopMoving();
+
+    jumpTime = 0;
+    fallAfterJump = false;
+    ResetJumpDestination();
+}
+
 void PlayerbotAI::Reset(bool full)
 {
     AiObjectContext* context = aiObjectContext;
@@ -1807,9 +1821,7 @@ void PlayerbotAI::Reset(bool full)
 
     if (full)
     {
-        RESET_AI_VALUE(LastMovement&,"last movement");
-        RESET_AI_VALUE(LastMovement&,"last area trigger");
-        RESET_AI_VALUE(LastMovement&,"last taxi");
+        ResetMovementSessionState();
 
         TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
         sTravelMgr.SetNullTravelTarget(target);
@@ -1822,12 +1834,6 @@ void PlayerbotAI::Reset(bool full)
         aiObjectContext->ClearValues("no active travel destinations");
 
         InterruptSpell();
-
-        StopMoving();
-
-        jumpTime = 0;
-        fallAfterJump = false;
-        ResetJumpDestination();
 
         WorldSession* botWorldSessionPtr = bot->GetSession();
         bool logout = botWorldSessionPtr->ShouldLogOut(time(nullptr));
