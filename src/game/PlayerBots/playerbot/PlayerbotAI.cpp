@@ -300,6 +300,7 @@ std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState
         {"framework.session_duration", std::to_string(botSession.plannedDuration)},
         {"framework.session_started", std::to_string(static_cast<uint32>(botSession.startedAt))},
         {"framework.session_paused", std::to_string(static_cast<uint32>(botSession.pausedAt))},
+        {"framework.session_maintenance_breakpoint", std::to_string(static_cast<uint32>(botSession.maintenanceBreakpointUntil))},
         {"framework.session_is_paused", botSession.isPaused ? "1" : "0"},
         {"framework.committed_purpose", std::to_string(static_cast<uint32>(committedTask.purpose))},
         {"framework.committed_target", std::to_string(committedTask.targetGuid.GetRawValue())},
@@ -329,6 +330,7 @@ void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::
     botSession.plannedDuration = ParseUint32OrDefault(values, "framework.session_duration", botSession.plannedDuration);
     botSession.startedAt = static_cast<time_t>(ParseUint32OrDefault(values, "framework.session_started", static_cast<uint32>(botSession.startedAt)));
     botSession.pausedAt = static_cast<time_t>(ParseUint32OrDefault(values, "framework.session_paused", static_cast<uint32>(botSession.pausedAt)));
+    botSession.maintenanceBreakpointUntil = static_cast<time_t>(ParseUint32OrDefault(values, "framework.session_maintenance_breakpoint", static_cast<uint32>(botSession.maintenanceBreakpointUntil)));
     botSession.isPaused = ParseBoolOrDefault(values, "framework.session_is_paused", botSession.isPaused);
 
     committedTask.purpose = static_cast<TravelDestinationPurpose>(ParseUint32OrDefault(values, "framework.committed_purpose", static_cast<uint32>(committedTask.purpose)));
@@ -425,10 +427,21 @@ bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotSta
     if (engineState != BotState::BOT_STATE_NON_COMBAT)
         return true;
 
-    if (botSession.isPaused || botSession.state == SessionState::IDLE || botSession.state == SessionState::TRAVELLING)
+    if (HasActivePlayerMaster())
+        return true;
+
+    if (botSession.isPaused)
         return true;
 
     if (IsTravelFrameworkAction(actionName) || IsRecoveryAction(actionName))
+        return true;
+
+    if ((botSession.state == SessionState::IDLE || botSession.state == SessionState::TRAVELLING) &&
+        (IsMaintenanceAction(actionName) || IsSocialEconomyAction(actionName)) &&
+        !HasMaintenanceBreakpoint())
+        return false;
+
+    if (botSession.state == SessionState::IDLE || botSession.state == SessionState::TRAVELLING)
         return true;
 
     switch (botSession.state)
@@ -461,6 +474,27 @@ bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotSta
     return true;
 }
 
+void PlayerbotAI::OpenMaintenanceBreakpoint(const std::string& reason, uint32 durationSeconds)
+{
+    if (HasActivePlayerMaster())
+        return;
+
+    const time_t now = time(nullptr);
+    const time_t breakpointUntil = now + durationSeconds;
+    if (botSession.maintenanceBreakpointUntil < breakpointUntil)
+        botSession.maintenanceBreakpointUntil = breakpointUntil;
+
+    TellDebug(GetMaster(), "Opening maintenance breakpoint for " + std::to_string(durationSeconds) + "s due to " + reason + ".", "debug travel");
+}
+
+bool PlayerbotAI::HasMaintenanceBreakpoint(time_t now) const
+{
+    if (!now)
+        now = time(nullptr);
+
+    return botSession.maintenanceBreakpointUntil && botSession.maintenanceBreakpointUntil >= now;
+}
+
 bool PlayerbotAI::PauseFrameworkSession(const std::string& reason, bool requireCommittedTask)
 {
     if (botSession.state == SessionState::IDLE || botSession.isPaused)
@@ -471,6 +505,7 @@ bool PlayerbotAI::PauseFrameworkSession(const std::string& reason, bool requireC
     {
         committedTask.Clear();
         botSession.Reset(SessionState::IDLE);
+        OpenMaintenanceBreakpoint(reason + " invalidated session");
         return false;
     }
 
@@ -490,6 +525,7 @@ bool PlayerbotAI::ResumeFrameworkSession(const std::string& reason)
         committedTask.Clear();
         TellDebug(GetMaster(), "Discarding paused " + SessionStateToString(botSession.state) + " session after " + reason + " because the committed task is no longer valid.", "debug travel");
         botSession.Reset(SessionState::IDLE);
+        OpenMaintenanceBreakpoint(reason + " invalidated session");
         return false;
     }
 
@@ -508,6 +544,7 @@ void PlayerbotAI::DiscardFrameworkSession(const std::string& reason, bool clearC
         committedTask.Clear();
 
     botSession.Reset(SessionState::IDLE);
+    OpenMaintenanceBreakpoint(reason);
 
     if (hadSession)
         TellDebug(GetMaster(), "Discarding " + SessionStateToString(oldState) + " session due to " + reason + ".", "debug travel");

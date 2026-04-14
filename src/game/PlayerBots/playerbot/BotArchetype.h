@@ -69,6 +69,7 @@ namespace ai
         uint32 plannedDuration = 0;
         time_t startedAt = 0;
         time_t pausedAt = 0;
+        time_t maintenanceBreakpointUntil = 0;
         bool isPaused = false;
 
         void Reset(SessionState newState = SessionState::IDLE);

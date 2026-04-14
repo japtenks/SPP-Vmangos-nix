@@ -67,7 +67,10 @@ namespace
 
         BotSession& session = ai->GetSession();
         if (!session.isPaused && session.state == GetSessionStateForTravelPurpose(purpose))
+        {
             session.Reset(SessionState::IDLE);
+            ai->OpenMaintenanceBreakpoint("goal completed");
+        }
     }
 }
 
