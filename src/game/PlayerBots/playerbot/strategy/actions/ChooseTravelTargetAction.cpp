@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
 #include "GuildMgr.h"
+#include <algorithm>
 #include <iomanip>
 
 using namespace ai;
@@ -193,6 +194,22 @@ namespace
             session.plannedDuration = (weights.minSessionMinutes + weights.maxSessionMinutes) / 2;
         }
     }
+
+    float GetQuestPriorityScore(PlayerbotAI* ai, TravelDestination* destination, std::unordered_map<uint32, float>& cache)
+    {
+        QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(destination);
+        if (!objectiveDestination)
+            return 100.0f;
+
+        const uint32 questId = objectiveDestination->GetQuestId();
+        std::unordered_map<uint32, float>::const_iterator cached = cache.find(questId);
+        if (cached != cache.end())
+            return cached->second;
+
+        const float score = ai->GetAiObjectContext()->GetValue<float>("quest priority", std::to_string(questId))->Get();
+        cache[questId] = score;
+        return score;
+    }
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -277,6 +294,16 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         !SessionAllowsPurpose(currentSession.state, newPurpose))
     {
         ai->TellDebug(requester, "Blocking " + TravelDestinationPurposeName.at(newPurpose) + " during " + SessionStateToString(currentSession.state) + " session.", "debug travel");
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
+        return false;
+    }
+
+    if (candidateSessionState == SessionState::MAINTENANCE &&
+        currentSession.state != SessionState::MAINTENANCE &&
+        !ai->HasActivePlayerMaster() &&
+        !ai->HasMaintenanceBreakpoint())
+    {
+        ai->TellDebug(requester, "Delaying maintenance target until a maintenance breakpoint opens.", "debug travel");
         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_READY);
         return false;
     }
@@ -560,6 +587,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 {
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
+    std::unordered_map<uint32, float> questPriorityCache;
 
     bool hasTarget = false;
 
@@ -567,10 +595,32 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     {
         ai->TellDebug(requester, "Found " + std::to_string(travelPointList.size()) + " points at range " + PrintPartion(partition), "debug travel");
 
-        for (auto& [destination, position, distance] : travelPointList)
+        TravelPointList sortedPoints = travelPointList;
+        std::stable_sort(sortedPoints.begin(), sortedPoints.end(), [&](const TravelPoint& left, const TravelPoint& right)
+        {
+            TravelDestination* leftDestination = std::get<0>(left);
+            TravelDestination* rightDestination = std::get<0>(right);
+
+            const float leftScore = GetQuestPriorityScore(ai, leftDestination, questPriorityCache);
+            const float rightScore = GetQuestPriorityScore(ai, rightDestination, questPriorityCache);
+
+            if (leftScore == rightScore)
+                return std::get<2>(left) < std::get<2>(right);
+
+            return leftScore > rightScore;
+        });
+
+        for (auto& [destination, position, distance] : sortedPoints)
         {
             if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
                 continue;
+
+            const float questPriority = GetQuestPriorityScore(ai, destination, questPriorityCache);
+            if (!target->IsForced() && questPriority < 20.0f)
+            {
+                ai->TellDebug(requester, "Suppressing low-priority quest target: " + destination->GetTitle() + " (" + std::to_string(uint32(questPriority)) + ")", "debug travel");
+                continue;
+            }
 
             if (distanceCheck) //Check if we have moved significantly after getting the destinations.
             {
