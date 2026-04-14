@@ -352,6 +352,58 @@ void PlayerbotAI::NormalizeFrameworkState()
         botSession.Reset(SessionState::IDLE);
 }
 
+bool PlayerbotAI::PauseFrameworkSession(const std::string& reason, bool requireCommittedTask)
+{
+    if (botSession.state == SessionState::IDLE || botSession.isPaused)
+        return false;
+
+    const bool hasValidCommittedTask = committedTask.ValidateTarget(this, time(nullptr), 0);
+    if (requireCommittedTask && !hasValidCommittedTask)
+    {
+        committedTask.Clear();
+        botSession.Reset(SessionState::IDLE);
+        return false;
+    }
+
+    botSession.isPaused = true;
+    botSession.pausedAt = time(nullptr);
+    TellDebug(GetMaster(), "Pausing " + SessionStateToString(botSession.state) + " session for " + reason + ".", "debug travel");
+    return true;
+}
+
+bool PlayerbotAI::ResumeFrameworkSession(const std::string& reason)
+{
+    if (!botSession.isPaused)
+        return false;
+
+    if (!committedTask.ValidateTarget(this, time(nullptr), 0))
+    {
+        committedTask.Clear();
+        TellDebug(GetMaster(), "Discarding paused " + SessionStateToString(botSession.state) + " session after " + reason + " because the committed task is no longer valid.", "debug travel");
+        botSession.Reset(SessionState::IDLE);
+        return false;
+    }
+
+    botSession.isPaused = false;
+    botSession.pausedAt = 0;
+    TellDebug(GetMaster(), "Resuming " + SessionStateToString(botSession.state) + " session after " + reason + ".", "debug travel");
+    return true;
+}
+
+void PlayerbotAI::DiscardFrameworkSession(const std::string& reason, bool clearCommittedTask)
+{
+    const bool hadSession = botSession.state != SessionState::IDLE || botSession.isPaused;
+    const SessionState oldState = botSession.state;
+
+    if (clearCommittedTask)
+        committedTask.Clear();
+
+    botSession.Reset(SessionState::IDLE);
+
+    if (hadSession)
+        TellDebug(GetMaster(), "Discarding " + SessionStateToString(oldState) + " session due to " + reason + ".", "debug travel");
+}
+
 PlayerbotAI::~PlayerbotAI()
 {
     for (uint8 i = 0 ; i < (uint8)BotState::BOT_STATE_ALL; i++)
@@ -1025,6 +1077,8 @@ void PlayerbotAI::OnCombatStarted()
 {
     if(!IsStateActive(BotState::BOT_STATE_COMBAT))
     {
+        PauseFrameworkSession("combat");
+
         // Reset the combat start timestamp
         aiObjectContext->GetValue<time_t>("combat start time")->Set(time(0));
 
@@ -1067,6 +1121,7 @@ void PlayerbotAI::OnCombatEnded()
         }
 
         ChangeEngine(BotState::BOT_STATE_NON_COMBAT);
+        ResumeFrameworkSession("combat");
     }
 }
 
@@ -1074,6 +1129,7 @@ void PlayerbotAI::OnDeath()
 {
     if (!IsStateActive(BotState::BOT_STATE_DEAD) && !sServerFacade.IsAlive(bot))
     {
+        DiscardFrameworkSession("death");
         StopMoving();
 
         Player* master = GetMaster();
@@ -1167,6 +1223,7 @@ void PlayerbotAI::OnResurrected()
         }
 
         ChangeEngine(BotState::BOT_STATE_NON_COMBAT);
+        ResumeFrameworkSession("resurrection");
     }
 }
 

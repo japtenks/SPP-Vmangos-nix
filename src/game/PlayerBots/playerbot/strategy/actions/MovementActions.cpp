@@ -2053,6 +2053,8 @@ bool MovementAction::Flee(Unit *target)
     if (!sPlayerbotAIConfig.fleeingEnabled)
         return false;
 
+    ai->PauseFrameworkSession("flee");
+
     if (!IsMovingAllowed())
     {
         ai->TellError(GetMaster(), "I am stuck while fleeing");
