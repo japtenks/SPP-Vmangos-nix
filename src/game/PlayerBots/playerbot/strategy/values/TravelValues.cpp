@@ -476,8 +476,7 @@ bool ShouldTravelNamedValue::Calculate()
             budgetType = NeedMoneyFor::anything;
         }
 
-        if (AI_VALUE2(uint32, "train cost", trainerType) == 0 &&
-            !(trainerType == TRAINER_TYPE_CLASS && HasUntrainedWeaponSkillNeed(bot))) //Has nothing to train
+        if (AI_VALUE2(uint32, "train cost", trainerType) == 0) //Has nothing to train
             return false;
 
         if (!AI_VALUE2(bool, "has all money for", (uint32)budgetType))

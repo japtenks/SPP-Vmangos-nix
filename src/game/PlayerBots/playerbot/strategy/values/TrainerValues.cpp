@@ -1,27 +1,71 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/ServerSharedKnowledge.h"
 #include "TrainerValues.h"
 #include "SharedValueContext.h"
 #include "ItemUsageValue.h"
 #include "playerbot/PlayerbotHelpMgr.h"
 
+#include <algorithm>
+#include <unordered_map>
+
 using namespace ai;
 
 namespace
 {
-    bool HasUntrainedWeaponSkillNeed(Player* bot)
+    std::vector<uint32> GetMissingWeaponSkills(Player* bot)
     {
+        std::vector<uint32> missingSkills;
         if (!bot || !bot->GetPlayerbotAI())
-            return false;
+            return missingSkills;
 
         AiObjectContext* context = bot->GetPlayerbotAI()->GetAiObjectContext();
         for (uint32 skillId : ItemUsageValue::TrackedWeaponSkills())
         {
             if (context->GetValue<bool>("needs weapon skill", std::to_string(skillId))->Get())
+                missingSkills.push_back(skillId);
+        }
+
+        return missingSkills;
+    }
+
+    bool TeachesWeaponSkill(TrainerSpell const* trainerSpell, uint32 skillId)
+    {
+        if (!trainerSpell || !skillId)
+            return false;
+
+        SpellLearnSkillNode const* learnSkill = sSpellMgr.GetSpellLearnSkill(trainerSpell->spell[0]);
+        if (learnSkill && learnSkill->skill == skillId)
+            return true;
+
+        SpellLearnSpellMapBounds bounds = sSpellMgr.GetSpellLearnSpellMapBounds(trainerSpell->spell[0]);
+        for (SpellLearnSpellMap::const_iterator itr = bounds.first; itr != bounds.second; ++itr)
+        {
+            SpellLearnSkillNode const* learnedSkill = sSpellMgr.GetSpellLearnSkill(itr->second.spell);
+            if (learnedSkill && learnedSkill->skill == skillId)
                 return true;
         }
 
         return false;
+    }
+
+    bool TeachesAnyMissingWeaponSkill(TrainerSpell const* trainerSpell, Player* bot)
+    {
+        for (uint32 skillId : GetMissingWeaponSkills(bot))
+        {
+            if (TeachesWeaponSkill(trainerSpell, skillId))
+                return true;
+        }
+
+        return false;
+    }
+
+    float GetTrainerKnowledgeScore(uint32 trainerEntry, Player* bot)
+    {
+        if (!bot)
+            return 0.0f;
+
+        return sServerSharedKnowledge.GetTrainerSkillConfidence(trainerEntry, bot->GetClass(), GetMissingWeaponSkills(bot), bot->GetMapId());
     }
 }
 
@@ -189,7 +233,8 @@ std::vector<int32> AvailableTrainersValue::Calculate()
 {
     std::vector<TrainerSpell const*> trainableSpells = AI_VALUE2(std::vector<TrainerSpell const*>, "trainable spells", getQualifier());;
     std::vector<int32> retTrainers;
-    const bool needsWeaponSkillTraining = HasUntrainedWeaponSkillNeed(bot);
+    const bool needsWeaponSkillTraining = !GetMissingWeaponSkills(bot).empty();
+    std::unordered_map<int32, float> trainerKnowledgeScores;
 
     int8 qualifierType = getQualifier().empty() ? -1 : stoi(getQualifier());
 
@@ -211,8 +256,21 @@ std::vector<int32> AvailableTrainersValue::Calculate()
             {
                 for (auto& [trainerSpell, trainers] : trainerSpellList)
                 {
+                    if (!TeachesAnyMissingWeaponSkill(trainerSpell, bot))
+                        continue;
+
+                    for (uint32 skillId : GetMissingWeaponSkills(bot))
+                    {
+                        if (!TeachesWeaponSkill(trainerSpell, skillId))
+                            continue;
+
+                        for (int32 trainer : trainers)
+                            sServerSharedKnowledge.RecordTrainerSkill(trainer, bot->GetClass(), skillId, bot->GetMapId(), 0.05f);
+                    }
+
                     for (auto& trainer : trainers)
                     {
+                        trainerKnowledgeScores[trainer] = std::max(trainerKnowledgeScores[trainer], GetTrainerKnowledgeScore(trainer, bot));
                         if (std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                             retTrainers.push_back(trainer);
                     }
@@ -231,6 +289,14 @@ std::vector<int32> AvailableTrainersValue::Calculate()
                 }
             }
         }
+    }
+
+    if (needsWeaponSkillTraining && !retTrainers.empty())
+    {
+        std::stable_sort(retTrainers.begin(), retTrainers.end(), [&](int32 left, int32 right)
+        {
+            return trainerKnowledgeScores[left] > trainerKnowledgeScores[right];
+        });
     }
 
     return retTrainers;
