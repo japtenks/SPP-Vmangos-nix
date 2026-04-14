@@ -680,6 +680,7 @@ public:
     BotSession& GetSession() { return botSession; }
     const BotSession& GetSession() const { return botSession; }
     void SetSessionState(SessionState state) { botSession.Reset(state); }
+    bool IsActionAllowedInSession(const std::string& actionName, BotState engineState) const;
     bool PauseFrameworkSession(const std::string& reason, bool requireCommittedTask = true);
     bool ResumeFrameworkSession(const std::string& reason);
     void DiscardFrameworkSession(const std::string& reason, bool clearCommittedTask = true);

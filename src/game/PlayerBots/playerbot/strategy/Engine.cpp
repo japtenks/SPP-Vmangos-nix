@@ -192,9 +192,16 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                 bool isUseful = false;
                 if (!isStunned || action->isUsefulWhenStunned())
                 {
-                    auto pmo2 = sPerformanceMonitor.start(PERF_MON_ACTION, "isUseful", ai);
-                    isUseful = action->isUseful();
-                    pmo2.reset();
+                    if (!ai->IsActionAllowedInSession(action->getName(), state))
+                    {
+                        LogAction("A:%s - BLOCKED_BY_SESSION", action->getName().c_str());
+                    }
+                    else
+                    {
+                        auto pmo2 = sPerformanceMonitor.start(PERF_MON_ACTION, "isUseful", ai);
+                        isUseful = action->isUseful();
+                        pmo2.reset();
+                    }
                 }
 
                 if (isUseful)

@@ -352,6 +352,115 @@ void PlayerbotAI::NormalizeFrameworkState()
         botSession.Reset(SessionState::IDLE);
 }
 
+namespace
+{
+    bool StartsWithActionCategory(const std::string& actionName, const std::string& prefix)
+    {
+        return actionName.size() >= prefix.size() && actionName.compare(0, prefix.size(), prefix) == 0;
+    }
+
+    bool IsTravelFrameworkAction(const std::string& actionName)
+    {
+        return actionName == "travel" ||
+               actionName == "choose travel target" ||
+               actionName == "choose group travel target" ||
+               actionName == "refresh travel target" ||
+               actionName == "request travel target" ||
+               actionName == "request named travel target" ||
+               actionName == "request quest travel target" ||
+               actionName == "reset travel target" ||
+               actionName == "move to travel target";
+    }
+
+    bool IsRecoveryAction(const std::string& actionName)
+    {
+        return actionName == "food" ||
+               actionName == "drink" ||
+               actionName == "sit" ||
+               actionName == "stay";
+    }
+
+    bool IsMaintenanceAction(const std::string& actionName)
+    {
+        return actionName == "check mail" ||
+               StartsWithActionCategory(actionName, "rpg ") ||
+               actionName == "rpg" ||
+               actionName == "crpg";
+    }
+
+    bool IsQuestAction(const std::string& actionName)
+    {
+        return actionName == "auto complete quest" ||
+               actionName == "auto share quest" ||
+               actionName == "guild accept quest order" ||
+               actionName == "use random quest item" ||
+               StartsWithActionCategory(actionName, "quest ") ||
+               actionName.find(" quest") != std::string::npos;
+    }
+
+    bool IsSocialEconomyAction(const std::string& actionName)
+    {
+        return actionName == "suggest trade" ||
+               actionName == "invite guild" ||
+               actionName == "buy petition" ||
+               actionName == "offer petition" ||
+               actionName == "offer petition nearby" ||
+               actionName == "turn in petition" ||
+               actionName == "buy tabard" ||
+               actionName == "guild manage nearby" ||
+               actionName == "guild share item" ||
+               actionName == "guild ah buy";
+    }
+
+    bool IsFishingAction(const std::string& actionName)
+    {
+        return actionName == "move to fish" ||
+               actionName == "fish" ||
+               actionName == "use fishing bobber";
+    }
+}
+
+bool PlayerbotAI::IsActionAllowedInSession(const std::string& actionName, BotState engineState) const
+{
+    if (engineState != BotState::BOT_STATE_NON_COMBAT)
+        return true;
+
+    if (botSession.isPaused || botSession.state == SessionState::IDLE || botSession.state == SessionState::TRAVELLING)
+        return true;
+
+    if (IsTravelFrameworkAction(actionName) || IsRecoveryAction(actionName))
+        return true;
+
+    switch (botSession.state)
+    {
+        case SessionState::QUESTING:
+            if (IsMaintenanceAction(actionName) || IsSocialEconomyAction(actionName) || IsFishingAction(actionName))
+                return false;
+            return true;
+        case SessionState::MAINTENANCE:
+            if (IsFishingAction(actionName) || IsQuestAction(actionName))
+                return false;
+            return true;
+        case SessionState::DUNGEON_RUN:
+            if (IsMaintenanceAction(actionName) || IsSocialEconomyAction(actionName) || IsFishingAction(actionName))
+                return false;
+            return true;
+        case SessionState::TOURNAMENT:
+            return IsFishingAction(actionName);
+        case SessionState::REP_FARMING:
+        case SessionState::RARE_HUNTING:
+        case SessionState::CRAFTING_COOLDOWN:
+        case SessionState::WORLD_PVP:
+            if (IsMaintenanceAction(actionName) || IsSocialEconomyAction(actionName))
+                return false;
+            return true;
+        default:
+            break;
+    }
+
+    return true;
+}
+
 bool PlayerbotAI::PauseFrameworkSession(const std::string& reason, bool requireCommittedTask)
 {
     if (botSession.state == SessionState::IDLE || botSession.isPaused)
