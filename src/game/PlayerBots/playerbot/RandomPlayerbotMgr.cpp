@@ -5,6 +5,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/values/ItemUsageValue.h"
 #include "strategy/values/QuestPriorityValue.h"
 #include "AccountMgr.h"
 #include "ObjectMgr.h"
@@ -726,6 +727,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     UpdateCommittedTaskValidity(availableBots, frameworkUpdateBots);
     UpdateQuestLogHygiene(availableBots, frameworkUpdateBots);
+    UpdateWeaponSkillNeeds(availableBots, frameworkUpdateBots);
 
     LoginFreeBots();
 
@@ -858,6 +860,76 @@ void RandomPlayerbotMgr::UpdateQuestLogHygiene(const std::list<uint32>& availabl
     }
 
     questLogHygieneCursor = (questLogHygieneCursor + visited) % listSize;
+}
+
+void RandomPlayerbotMgr::UpdateWeaponSkillNeeds(const std::list<uint32>& availableBots, uint32 maxBots)
+{
+    if (!maxBots || availableBots.empty())
+        return;
+
+    const uint32 listSize = availableBots.size();
+    weaponSkillNeedsCursor %= listSize;
+
+    auto itr = availableBots.begin();
+    std::advance(itr, weaponSkillNeedsCursor);
+
+    uint32 processed = 0;
+    uint32 visited = 0;
+    while (visited < listSize && processed < maxBots)
+    {
+        if (itr == availableBots.end())
+            itr = availableBots.begin();
+
+        uint32 botId = *itr;
+        ++itr;
+        ++visited;
+
+        Player* bot = GetPlayerBot(botId);
+        if (!bot || !bot->GetPlayerbotAI())
+            continue;
+
+        PlayerbotAI* ai = bot->GetPlayerbotAI();
+        AiObjectContext* context = ai->GetAiObjectContext();
+
+        for (uint32 skillId : ItemUsageValue::TrackedWeaponSkills())
+            context->GetValue<bool>("needs weapon skill", std::to_string(skillId))->Set(false);
+
+        auto updateForItem = [&](Item* item)
+        {
+            if (!item)
+                return;
+
+            ItemPrototype const* proto = item->GetProto();
+            if (!proto || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+                return;
+
+            uint32 weaponSkillId = ItemUsageValue::GetWeaponSkillForProto(proto);
+            if (!weaponSkillId || bot->GetSkillValue(weaponSkillId) > 0)
+                return;
+
+            context->GetValue<bool>("needs weapon skill", std::to_string(weaponSkillId))->Set(true);
+        };
+
+        for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+            updateForItem(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            updateForItem(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        {
+            Bag* pBag = static_cast<Bag*>(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag));
+            if (!pBag)
+                continue;
+
+            for (uint8 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                updateForItem(bot->GetItemByPos(bag, slot));
+        }
+
+        ++processed;
+    }
+
+    weaponSkillNeedsCursor = (weaponSkillNeedsCursor + visited) % listSize;
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()

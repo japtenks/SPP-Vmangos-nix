@@ -382,6 +382,7 @@ namespace ai
             creators["not"] = [](PlayerbotAI* ai) { return new NotValue(ai); };
             creators["gt32"] = [](PlayerbotAI* ai) { return new GT32Value(ai); };
             creators["manual bool"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai); };
+            creators["needs weapon skill"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai, false, "needs weapon skill"); };
             creators["manual int"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai); };
             creators["manual saved int"] = [](PlayerbotAI* ai) { return new IntManualSetSavedValue(ai); };
             creators["manual string"] = [](PlayerbotAI* ai) { return new StringManualSetValue(ai); };

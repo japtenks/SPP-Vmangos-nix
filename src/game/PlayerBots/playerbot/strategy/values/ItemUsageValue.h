@@ -83,6 +83,8 @@ namespace ai
         virtual ItemUsage Calculate() override;
 
         static ItemUsage QueryItemUsageForEquip(ItemQualifier& itemQualifier, Player* bot);
+        static uint32 GetWeaponSkillForProto(ItemPrototype const* proto);
+        static const std::vector<uint32>& TrackedWeaponSkills();
         static uint32 GetSmallestBagSize(Player* bot);
         static std::string ReasonForNeed(ItemUsage usage, ItemQualifier qualifier = ItemQualifier(), uint32 count = 1, Player* bot = nullptr);
         static uint32 GetAhDepositCost(ItemPrototype const* proto, uint32 count = 1);

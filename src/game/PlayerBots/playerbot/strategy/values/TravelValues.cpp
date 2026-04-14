@@ -4,9 +4,28 @@
 #include "SharedValueContext.h"
 #include "BudgetValues.h"
 #include "GuildValues.h"
+#include "ItemUsageValue.h"
 #include "GuildMgr.h"
 
 using namespace ai;
+
+namespace
+{
+    bool HasUntrainedWeaponSkillNeed(Player* bot)
+    {
+        if (!bot || !bot->GetPlayerbotAI())
+            return false;
+
+        AiObjectContext* context = bot->GetPlayerbotAI()->GetAiObjectContext();
+        for (uint32 skillId : ItemUsageValue::TrackedWeaponSkills())
+        {
+            if (context->GetValue<bool>("needs weapon skill", std::to_string(skillId))->Get())
+                return true;
+        }
+
+        return false;
+    }
+}
 
 EntryGuidps EntryGuidpsValue::Calculate()
 {
@@ -457,7 +476,8 @@ bool ShouldTravelNamedValue::Calculate()
             budgetType = NeedMoneyFor::anything;
         }
 
-        if (AI_VALUE2(uint32, "train cost", trainerType) == 0) //Has nothing to train
+        if (AI_VALUE2(uint32, "train cost", trainerType) == 0 &&
+            !(trainerType == TRAINER_TYPE_CLASS && HasUntrainedWeaponSkillNeed(bot))) //Has nothing to train
             return false;
 
         if (!AI_VALUE2(bool, "has all money for", (uint32)budgetType))

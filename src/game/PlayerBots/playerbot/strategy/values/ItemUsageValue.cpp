@@ -12,6 +12,132 @@
 
 using namespace ai;
 
+namespace
+{
+    bool IsMainArmorSubclass(uint32 subClass)
+    {
+        return subClass >= ITEM_SUBCLASS_ARMOR_CLOTH && subClass <= ITEM_SUBCLASS_ARMOR_PLATE;
+    }
+
+    bool IsArmorFloorSlot(InventoryType inventoryType)
+    {
+        switch (inventoryType)
+        {
+        case INVTYPE_HEAD:
+        case INVTYPE_SHOULDERS:
+        case INVTYPE_BODY:
+        case INVTYPE_CHEST:
+        case INVTYPE_WAIST:
+        case INVTYPE_LEGS:
+        case INVTYPE_FEET:
+        case INVTYPE_WRISTS:
+        case INVTYPE_HANDS:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    uint32 GetPreferredArmorSubclass(Player* bot, uint32 /*specId*/)
+    {
+        switch (bot->getClass())
+        {
+        case CLASS_WARRIOR:
+        case CLASS_PALADIN:
+            return bot->getLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_PLATE : ITEM_SUBCLASS_ARMOR_MAIL;
+        case CLASS_HUNTER:
+        case CLASS_SHAMAN:
+            return bot->getLevel() >= 40 ? ITEM_SUBCLASS_ARMOR_MAIL : ITEM_SUBCLASS_ARMOR_LEATHER;
+        case CLASS_ROGUE:
+        case CLASS_DRUID:
+            return ITEM_SUBCLASS_ARMOR_LEATHER;
+        case CLASS_PRIEST:
+        case CLASS_MAGE:
+        case CLASS_WARLOCK:
+        default:
+            return ITEM_SUBCLASS_ARMOR_CLOTH;
+        }
+    }
+
+    bool CanKeepSlotOpenForPreferredArmor(Player* bot, const ItemPrototype* candidateProto, uint16 candidateDest, uint32 preferredSubClass)
+    {
+        if (!candidateProto || candidateProto->Class != ITEM_CLASS_ARMOR || !IsMainArmorSubclass(candidateProto->SubClass))
+            return false;
+
+        if (!IsArmorFloorSlot((InventoryType)candidateProto->InventoryType))
+            return false;
+
+        if (candidateProto->SubClass >= preferredSubClass)
+            return false;
+
+        Item* equippedItem = bot->GetItemByPos(candidateDest);
+        if (equippedItem)
+        {
+            ItemPrototype const* equippedProto = equippedItem->GetProto();
+            if (equippedProto && equippedProto->Class == ITEM_CLASS_ARMOR && IsMainArmorSubclass(equippedProto->SubClass) &&
+                equippedProto->SubClass >= preferredSubClass)
+                return true;
+        }
+
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        {
+            Item* otherItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+            if (!otherItem)
+                continue;
+
+            ItemPrototype const* otherProto = otherItem->GetProto();
+            if (!otherProto || otherProto->Class != ITEM_CLASS_ARMOR || otherProto->SubClass < preferredSubClass)
+                continue;
+
+            if (!IsArmorFloorSlot((InventoryType)otherProto->InventoryType))
+                continue;
+
+            uint16 otherDest;
+            if (RandomPlayerbotMgr::CanEquipUnseenItem(bot, NULL_SLOT, otherDest, otherProto->ItemId) != EQUIP_ERR_OK)
+                continue;
+
+            if ((otherDest & 255) != (candidateDest & 255))
+                continue;
+
+            if (otherProto->ItemLevel >= candidateProto->ItemLevel)
+                return true;
+        }
+
+        for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        {
+            Bag* pBag = static_cast<Bag*>(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag));
+            if (!pBag)
+                continue;
+
+            for (uint8 slot = 0; slot < pBag->GetBagSize(); ++slot)
+            {
+                Item* otherItem = bot->GetItemByPos(bag, slot);
+                if (!otherItem)
+                    continue;
+
+                ItemPrototype const* otherProto = otherItem->GetProto();
+                if (!otherProto || otherProto->Class != ITEM_CLASS_ARMOR || otherProto->SubClass < preferredSubClass)
+                    continue;
+
+                if (!IsArmorFloorSlot((InventoryType)otherProto->InventoryType))
+                    continue;
+
+                uint16 otherDest;
+                if (RandomPlayerbotMgr::CanEquipUnseenItem(bot, NULL_SLOT, otherDest, otherProto->ItemId) != EQUIP_ERR_OK)
+                    continue;
+
+                if ((otherDest & 255) != (candidateDest & 255))
+                    continue;
+
+                if (otherProto->ItemLevel >= candidateProto->ItemLevel)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+}
+
 std::unordered_map<uint32, std::unordered_set<uint32>> ItemUsageValue::m_reagentItemIdsForCraftingSkills;
 std::unordered_set<uint32> ItemUsageValue::m_allReagentItemIdsForCraftingSkills;
 std::vector<uint32> ItemUsageValue::m_allReagentItemIdsForCraftingSkillsVector;
@@ -20,6 +146,53 @@ std::unordered_map<uint32, std::vector<std::pair<uint32, uint32>>> ItemUsageValu
 
 std::unordered_set<uint32> ItemUsageValue::m_allItemIdsSoldByAnyVendors;
 std::unordered_set<uint32> ItemUsageValue::m_itemIdsSoldByAnyVendorsWithLimitedMaxCount;
+
+uint32 ItemUsageValue::GetWeaponSkillForProto(ItemPrototype const* proto)
+{
+    if (!proto || proto->Class != ITEM_CLASS_WEAPON)
+        return 0;
+
+    switch (proto->SubClass)
+    {
+    case ITEM_SUBCLASS_WEAPON_FIST:
+        return SKILL_FIST_WEAPONS;
+    case ITEM_SUBCLASS_WEAPON_EXOTIC:
+    case ITEM_SUBCLASS_WEAPON_EXOTIC2:
+    case ITEM_SUBCLASS_WEAPON_FISHING_POLE:
+        return 0;
+    default:
+        break;
+    }
+
+    uint32 skillId = proto->GetProficiencySkill();
+    if (skillId == SKILL_UNARMED || skillId == SKILL_ASSASSINATION || skillId == SKILL_FISHING)
+        return 0;
+
+    return skillId;
+}
+
+const std::vector<uint32>& ItemUsageValue::TrackedWeaponSkills()
+{
+    static const std::vector<uint32> trackedSkills = {
+        SKILL_AXES,
+        SKILL_2H_AXES,
+        SKILL_BOWS,
+        SKILL_GUNS,
+        SKILL_MACES,
+        SKILL_2H_MACES,
+        SKILL_POLEARMS,
+        SKILL_SWORDS,
+        SKILL_2H_SWORDS,
+        SKILL_STAVES,
+        SKILL_FIST_WEAPONS,
+        SKILL_DAGGERS,
+        SKILL_THROWN,
+        SKILL_CROSSBOWS,
+        SKILL_WANDS
+    };
+
+    return trackedSkills;
+}
 
 ItemQualifier::ItemQualifier(std::string qualifier, bool linkQualifier)
 {
@@ -636,10 +809,22 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
     bool shouldEquip = false;
 
     uint32 specId = sRandomItemMgr.GetPlayerSpecId(bot);
+    uint32 preferredArmorSubClass = GetPreferredArmorSubclass(bot, specId);
 
     uint32 statWeight = sRandomItemMgr.ItemStatWeight(bot, itemQualifier);
     if (statWeight)
         shouldEquip = true;
+
+    if (itemProto->Class == ITEM_CLASS_WEAPON)
+    {
+        uint32 weaponSkillId = GetWeaponSkillForProto(itemProto);
+        if (weaponSkillId && bot->GetSkillValue(weaponSkillId) == 0)
+        {
+            context->GetValue<bool>("needs weapon skill", std::to_string(weaponSkillId))->Set(true);
+            ai->TellDebug(ai->GetMaster(), "Skipping untrained weapon type for " + chat->formatItem(itemProto), "debug equip");
+            return ItemUsage::ITEM_USAGE_NONE;
+        }
+    }
 
     if (itemProto->Class == ITEM_CLASS_WEAPON && !sRandomItemMgr.ShouldEquipWeaponForSpec(bot->GetClass(), specId, itemProto))
         shouldEquip = false;
@@ -648,6 +833,14 @@ ItemUsage ItemUsageValue::QueryItemUsageForEquip(ItemQualifier& itemQualifier, P
 
     Item* oldItem = bot->GetItemByPos(dest);
     uint8 slot = dest & 255;
+
+    if (itemProto->Class == ITEM_CLASS_ARMOR &&
+        CanKeepSlotOpenForPreferredArmor(bot, itemProto, dest, preferredArmorSubClass))
+    {
+        ai->TellDebug(ai->GetMaster(), "Skipping lower armor class for " + chat->formatItem(itemProto) +
+            " because a preferred armor option exists for " + chat->formatSlot(slot), "debug equip");
+        return ItemUsage::ITEM_USAGE_NONE;
+    }
 
     ai->TellDebug(ai->GetMaster(), "Checking equip: " + chat->formatItem(itemProto) + " to " + chat->formatSlot(slot) + " vs " + (oldItem ? chat->formatItem(oldItem->GetProto()) : "empty"), "debug equip");
 

@@ -2,9 +2,28 @@
 #include "playerbot/playerbot.h"
 #include "TrainerValues.h"
 #include "SharedValueContext.h"
+#include "ItemUsageValue.h"
 #include "playerbot/PlayerbotHelpMgr.h"
 
 using namespace ai;
+
+namespace
+{
+    bool HasUntrainedWeaponSkillNeed(Player* bot)
+    {
+        if (!bot || !bot->GetPlayerbotAI())
+            return false;
+
+        AiObjectContext* context = bot->GetPlayerbotAI()->GetAiObjectContext();
+        for (uint32 skillId : ItemUsageValue::TrackedWeaponSkills())
+        {
+            if (context->GetValue<bool>("needs weapon skill", std::to_string(skillId))->Get())
+                return true;
+        }
+
+        return false;
+    }
+}
 
 
 trainableSpellMap* TrainableSpellMapValue::Calculate()
@@ -170,6 +189,7 @@ std::vector<int32> AvailableTrainersValue::Calculate()
 {
     std::vector<TrainerSpell const*> trainableSpells = AI_VALUE2(std::vector<TrainerSpell const*>, "trainable spells", getQualifier());;
     std::vector<int32> retTrainers;
+    const bool needsWeaponSkillTraining = HasUntrainedWeaponSkillNeed(bot);
 
     int8 qualifierType = getQualifier().empty() ? -1 : stoi(getQualifier());
 
@@ -186,6 +206,18 @@ std::vector<int32> AvailableTrainersValue::Calculate()
                 continue;
             if (trainerType == TRAINER_TYPE_MOUNTS && requirement != bot->GetRace())
                 continue;
+
+            if (trainerType == TRAINER_TYPE_CLASS && needsWeaponSkillTraining)
+            {
+                for (auto& [trainerSpell, trainers] : trainerSpellList)
+                {
+                    for (auto& trainer : trainers)
+                    {
+                        if (std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
+                            retTrainers.push_back(trainer);
+                    }
+                }
+            }
 
             for (auto& [trainerSpell, trainers] : trainerSpellList)
             {
