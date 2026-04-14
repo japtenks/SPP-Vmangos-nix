@@ -5,6 +5,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/PlayerbotFactory.h"
 #include "strategy/values/LastMovementValue.h"
+#include "strategy/values/QuestPriorityValue.h"
 #include "AccountMgr.h"
 #include "ObjectMgr.h"
 #include "Database/DatabaseEnv.h"
@@ -77,6 +78,44 @@ void activateCheckPlayersThread()
 {
     std::thread t([]() { sRandomPlayerbotMgr.CheckPlayers(); });
     t.detach();
+}
+
+namespace
+{
+    bool QuestHasTrackedProgress(Player* bot, const Quest* quest)
+    {
+        if (!bot || !quest)
+            return false;
+
+        const uint32 questId = quest->GetQuestId();
+        if (bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE)
+            return true;
+
+        const QuestStatusData* questStatus = bot->GetQuestStatusData(questId);
+        if (!questStatus)
+            return false;
+
+        for (int i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+        {
+            if (quest->ReqItemId[i])
+            {
+                const int required = quest->ReqItemCount[i];
+                const int available = questStatus->m_itemcount[i];
+                if (available > 0 && required > 0)
+                    return true;
+            }
+
+            if (quest->ReqCreatureOrGOId[i])
+            {
+                const int required = quest->ReqCreatureOrGOCount[i];
+                const int available = questStatus->m_creatureOrGOcount[i];
+                if (available > 0 && required > 0)
+                    return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 class botPIDImpl
@@ -686,6 +725,7 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     }
 
     UpdateCommittedTaskValidity(availableBots, frameworkUpdateBots);
+    UpdateQuestLogHygiene(availableBots, frameworkUpdateBots);
 
     LoginFreeBots();
 
@@ -752,6 +792,72 @@ void RandomPlayerbotMgr::UpdateCommittedTaskValidity(const std::list<uint32>& av
     }
 
     committedTaskUpdateCursor = (committedTaskUpdateCursor + visited) % listSize;
+}
+
+void RandomPlayerbotMgr::UpdateQuestLogHygiene(const std::list<uint32>& availableBots, uint32 maxBots)
+{
+    if (!maxBots || availableBots.empty())
+        return;
+
+    const uint32 listSize = availableBots.size();
+    questLogHygieneCursor %= listSize;
+
+    auto itr = availableBots.begin();
+    std::advance(itr, questLogHygieneCursor);
+
+    uint32 processed = 0;
+    uint32 visited = 0;
+    while (visited < listSize && processed < maxBots)
+    {
+        if (itr == availableBots.end())
+            itr = availableBots.begin();
+
+        Player* player = GetPlayerBot(*itr);
+        if (player)
+        {
+            PlayerbotAI* ai = player->GetPlayerbotAI();
+            if (ai && !ai->HasActivePlayerMaster() &&
+                ai->GetAiObjectContext()->GetValue<uint8>("free quest log slots")->Get() < 2)
+            {
+                const std::vector<ScoredQuest> priorityList =
+                    ai->GetAiObjectContext()->GetValue<std::vector<ScoredQuest>>("active quest priority list")->Get();
+                for (auto questItr = priorityList.rbegin(); questItr != priorityList.rend(); ++questItr)
+                {
+                    if (questItr->score >= 20.0f)
+                        break;
+
+                    const Quest* quest = sObjectMgr.GetQuestTemplate(questItr->questId);
+                    if (!quest || quest->GetRequiredClasses())
+                        continue;
+
+                    if (QuestHasTrackedProgress(player, quest))
+                        continue;
+
+                    ai->DropQuest(questItr->questId);
+
+                    CommittedTask& committedTask = ai->GetCommittedTask();
+                    if (committedTask.questId == questItr->questId)
+                    {
+                        committedTask.Clear();
+                        BotSession& session = ai->GetSession();
+                        if (session.state != SessionState::IDLE)
+                            session.Reset(SessionState::IDLE);
+                        ai->OpenMaintenanceBreakpoint("quest log hygiene");
+                    }
+
+                    sLog.Out(LOG_BASIC, LOG_LVL_DEBUG, "Quest hygiene dropped quest %u for bot %s (score %.2f)", questItr->questId, player->GetName(), questItr->score);
+                    break;
+                }
+            }
+
+            ++processed;
+        }
+
+        ++itr;
+        ++visited;
+    }
+
+    questLogHygieneCursor = (questLogHygieneCursor + visited) % listSize;
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()
