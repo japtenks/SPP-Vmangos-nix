@@ -2049,7 +2049,7 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     }
     else if (filtered == "debug commit")
     {
-        const CommittedTask& task = GetCommittedTask();
+        CommittedTask& task = GetCommittedTask();
         const BotSession& session = GetSession();
         const time_t now = time(nullptr);
         const bool validNow = task.ValidateTarget(this, now, 0);
