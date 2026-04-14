@@ -1068,7 +1068,13 @@ void TravelTarget::CheckStatus()
 
         if (destinationInactive || conditionsInactive)
         {
-            ai->TellDebug(ai->GetMaster(), "The target is cooling down because the destination was no longer active or the conditions are no longer true.", "debug travel");
+            std::ostringstream out;
+            out << "The target is cooling down because "
+                << (destinationInactive ? "destination_active=no" : "conditions_active=no")
+                << " status=" << static_cast<uint32>(GetStatus());
+            if (tDestination)
+                out << " dest=\"" << tDestination->GetTitle() << "\" purpose=" << static_cast<uint32>(tDestination->GetPurpose());
+            ai->TellDebug(ai->GetMaster(), out.str(), "debug travel");
             forced = false;
             ReleaseFrameworkTravelState(ai, this);
             SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);

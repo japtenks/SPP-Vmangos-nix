@@ -550,6 +550,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     if (!futureDestinations->valid())
     {
+        TellTravelTrace(ai, requester, "future destination fetch invalid; clearing prepared target");
         travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
         context->ClearValues("no active travel destinations");        
         return false;
@@ -560,6 +561,7 @@ bool ChooseTravelTargetAction::Execute(Event& event)
 
     PartitionedTravelList destinationList = futureDestinations->get();
 
+    TellTravelTrace(ai, requester, "future destination fetch resolved; resetting prepared target before selection");
     travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
 
     ai->TellDebug(ai->GetMaster(), "Got " + std::to_string(destinationList.size()) + " new destination ranges for " + futureTravelPurposeName, "debug travel");
@@ -1255,7 +1257,10 @@ bool RefreshTravelTargetAction::Execute(Event& event)
     RESET_AI_VALUE2(bool, "manual bool", "is travel refresh");
 
     if (!conditionsStillActive)
+    {
+        TellTravelTrace(ai, requester, "refresh aborted because travel target conditions no longer hold");
         return false;
+    }
 
     target->SetTarget(oldDestination, newPosition);
 

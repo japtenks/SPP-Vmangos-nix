@@ -11,6 +11,43 @@ using namespace ai;
 
 namespace
 {
+    const char* TravelStatusLabel(TravelStatus status)
+    {
+        switch (status)
+        {
+            case TravelStatus::TRAVEL_STATUS_NONE: return "none";
+            case TravelStatus::TRAVEL_STATUS_PREPARE: return "prepare";
+            case TravelStatus::TRAVEL_STATUS_READY: return "ready";
+            case TravelStatus::TRAVEL_STATUS_TRAVEL: return "travel";
+            case TravelStatus::TRAVEL_STATUS_WORK: return "work";
+            case TravelStatus::TRAVEL_STATUS_COOLDOWN: return "cooldown";
+            case TravelStatus::TRAVEL_STATUS_EXPIRED: return "expired";
+            default: return "unknown";
+        }
+    }
+
+    std::string DescribeTravelTarget(TravelTarget* target)
+    {
+        if (!target)
+            return "target=null";
+
+        TravelDestination* destination = target->GetDestination();
+        std::ostringstream out;
+        out << "status=" << TravelStatusLabel(target->GetStatus());
+
+        if (!destination)
+        {
+            out << " dest=<none>";
+            return out.str();
+        }
+
+        out << " dest=\"" << destination->GetTitle() << "\"";
+        out << " purpose=" << static_cast<uint32>(destination->GetPurpose());
+        out << " active=" << (target->IsDestinationActive() ? "yes" : "no");
+        out << " cond=" << (target->IsConditionsActive() ? "yes" : "no");
+        return out.str();
+    }
+
     bool HasUntrainedWeaponSkillNeed(Player* bot)
     {
         if (!bot || !bot->GetPlayerbotAI())
@@ -490,7 +527,13 @@ bool ShouldTravelNamedValue::Calculate()
 
 bool TravelTargetActiveValue::Calculate() 
 {
-    return AI_VALUE(TravelTarget*, "travel target")->IsActive(); 
+    TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+    bool active = target->IsActive();
+
+    if (!active && target->GetStatus() != TravelStatus::TRAVEL_STATUS_NONE)
+        ai->TellDebug(ai->GetMaster(), std::string("[PBTRACE] travel target inactive: ") + DescribeTravelTarget(target), "debug travel");
+
+    return active;
 };
 
 bool TravelTargetTravelingValue::Calculate()

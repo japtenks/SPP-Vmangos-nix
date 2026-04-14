@@ -127,6 +127,7 @@ int32 ItemBag::GetCount(Category* category, uint32 item)
 bool ItemBag::Add(ItemPrototype const* proto)
 {
     if (!proto ||
+        proto->Class == ITEM_CLASS_QUEST ||
         proto->Bonding == BIND_WHEN_PICKED_UP ||
         proto->Bonding == BIND_QUEST_ITEM)
         return false;
@@ -146,7 +147,9 @@ bool ItemBag::Add(ItemPrototype const* proto)
     if (sAhBotConfig.ignoreItemIds.find(proto->ItemId) != sAhBotConfig.ignoreItemIds.end())
         return false;
 
-    if (strstri(proto->Name1, "qa") || strstri(proto->Name1, "test") || strstri(proto->Name1, "deprecated"))
+    if (strstri(proto->Name1, "qa") || strstri(proto->Name1, "test") || strstri(proto->Name1, "deprecated") ||
+        strstri(proto->Name1, "unused") || strstri(proto->Name1, "monster ") ||
+        strstri(proto->Name1, "[ph]") || strstri(proto->Name1, "zzz"))
         return false;
 
     bool contains = false;

@@ -435,7 +435,7 @@ InventoryCandidate AhBotEconomy::FindInventoryCandidate(MarketId market, uint32 
         return candidate;
 
     auto result = CharacterDatabase.PQuery(
-        "SELECT c.`guid`, c.`race`, ii.`guid`, ii.`count` "
+        "SELECT c.`guid`, c.`race`, ii.`guid`, ii.`count`, ii.`flags` "
         "FROM `characters` c "
         "INNER JOIN `character_inventory` ci ON ci.`guid` = c.`guid` "
         "INNER JOIN `item_instance` ii ON ii.`guid` = ci.`item_guid` "
@@ -451,6 +451,10 @@ InventoryCandidate AhBotEconomy::FindInventoryCandidate(MarketId market, uint32 
         Field* fields = result->Fetch();
         uint8 race = fields[1].GetUInt8();
         if (!IsCharacterInMarket(market, race))
+            continue;
+
+        uint32 itemFlags = fields[4].GetUInt32();
+        if (itemFlags & ITEM_DYNFLAG_BOUND)
             continue;
 
         candidate.sellerGuid = fields[0].GetUInt32();

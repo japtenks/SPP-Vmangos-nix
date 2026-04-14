@@ -22245,6 +22245,11 @@ void Player::AddCooldown(SpellEntry const& spellEntry, ItemPrototype const* item
         auto& cdData = cdDataItr->second;
         if (!cdData->IsPermanent() && (!cdData->IsSpellCDExpired(sWorld.GetCurrentClockTime()) || !cdData->IsCatCDExpired(sWorld.GetCurrentClockTime())))
         {
+            // Auto-repeat ranged spells such as Auto Shot can attempt to refresh their active cooldown
+            // while the current autorepeat cycle is still running.
+            if (spellEntry.IsAutoRepeatRangedSpell())
+                return;
+
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "Player::AddCooldown> Spell(%u) try to add and already existing cooldown?", spellEntry.Id);
             return;
         }
