@@ -111,19 +111,21 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 
     float maxDistance = target->GetDestination()->GetRadiusMin();
 
-    //Evenly distribute around the target.
-    float angle = 2 * M_PI * urand(0, 100) / 100.0;
+    WorldPosition movePosition = location;
+    if (maxDistance > 0.0f)
+    {
+        WorldPosition reachablePosition = location;
+        if (reachablePosition.GetReachableRandomPointOnGround(bot, maxDistance, urand(0, 1)))
+            movePosition = reachablePosition;
+    }
 
-    float x = location.getX();
-    float y = location.getY();
-    float z = location.getZ();
-    float mapId = location.getMapId();
+    if (movePosition.getMapId() == bot->GetMapId())
+        movePosition.ClosestCorrectPoint(5.0f, 50.0f, bot->GetInstanceId());
 
-    //Move between 0.5 and 1.0 times the maxDistance.
-    float mod = urand(50, 100)/100.0;   
-
-    x += cos(angle) * maxDistance * mod;
-    y += sin(angle) * maxDistance * mod;
+    float x = movePosition.getX();
+    float y = movePosition.getY();
+    float z = movePosition.getZ();
+    float mapId = movePosition.getMapId();
 
     bool canMove = false;
 
@@ -155,6 +157,7 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         "[PBTRACE] move_to_travel attempt dest=\"" + target->GetDestination()->GetTitle() +
         "\" map=" + std::to_string(static_cast<uint32>(mapId)) +
         " point={" + std::to_string(static_cast<int32>(x)) + "," + std::to_string(static_cast<int32>(y)) + "," + std::to_string(static_cast<int32>(z)) + "}" +
+        " chosen_dist=" + std::to_string(static_cast<uint32>(movePosition.distance(location))) +
         " dist=" + std::to_string(static_cast<uint32>(location.distance(bot))) +
         " retries=" + std::to_string(static_cast<uint32>(target->GetRetryCount(true))),
         "debug travel");

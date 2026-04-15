@@ -80,13 +80,13 @@ bool FindCorpseAction::Execute(Event& event)
     float reclaimDist = CORPSE_RECLAIM_RADIUS - 5.0f;
     float corpseDist = botPos.distance(corpsePos);
 
-    //If player fell through terrain move corpse to player position.
-    if (bot->isRealPlayer() && botPos.getMapId() == moveToPos.getMapId())
+    // If the corpse ended up under terrain, snap it back to a valid point for bots too.
+    if (botPos.getMapId() == moveToPos.getMapId())
     {
-        //Try to correct the position upward.
+        // Try to correct the corpse position upward first.
         if (!moveToPos.ClosestCorrectPoint(5.0f, 500.0f, bot->GetInstanceId()))
         {
-            //Revive in place.
+            // If that fails, fall back to the ghost's current position.
             corpse->Relocate(botPos.getX(), botPos.getY(), botPos.getZ());
             corpsePos = corpse;
             corpseDist = botPos.distance(corpsePos);
@@ -137,30 +137,47 @@ bool FindCorpseAction::Execute(Event& event)
         }
         else
         {
-            FleeManager manager(bot, reclaimDist, 0.0, urand(0, 1), moveToPos);
-
-            if (manager.isUseful())
+            WorldPosition reclaimPos = corpsePos;
+            if (reclaimPos.GetReachableRandomPointOnGround(bot, reclaimDist, urand(0, 1)) &&
+                reclaimPos.getMapId() == corpsePos.getMapId() &&
+                reclaimPos.fDist(corpsePos) <= reclaimDist)
             {
-                float rx, ry, rz;
-                if (manager.CalculateDestination(&rx, &ry, &rz))
+                if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
                 {
-                    if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
-                    {
-                        std::ostringstream out;
-                        out << "Moving to revive some where safe.";
-                        ai->TellPlayerNoFacing(GetMaster(), out);
-                    }
-                    moveToPos = WorldPosition(moveToPos.getMapId(), rx, ry, rz, 0.0);
+                    std::ostringstream out;
+                    out << "Moving to a reclaim spot near corpse.";
+                    ai->TellPlayerNoFacing(GetMaster(), out);
                 }
-                else if (!moveToPos.GetReachableRandomPointOnGround(bot, reclaimDist, urand(0, 1)))
+
+                moveToPos = reclaimPos;
+            }
+            else
+            {
+                FleeManager manager(bot, reclaimDist, 0.0, urand(0, 1), moveToPos);
+
+                if (manager.isUseful())
                 {
-                    if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
+                    float rx, ry, rz;
+                    if (manager.CalculateDestination(&rx, &ry, &rz))
                     {
-                        std::ostringstream out;
-                        out << "Moving to revive at corpse.";
-                        ai->TellPlayerNoFacing(GetMaster(), out);
+                        if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
+                        {
+                            std::ostringstream out;
+                            out << "Moving to revive some where safe.";
+                            ai->TellPlayerNoFacing(GetMaster(), out);
+                        }
+                        moveToPos = WorldPosition(moveToPos.getMapId(), rx, ry, rz, 0.0);
                     }
-                    moveToPos = corpsePos;
+                    else if (!moveToPos.GetReachableRandomPointOnGround(bot, reclaimDist, urand(0, 1)))
+                    {
+                        if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
+                        {
+                            std::ostringstream out;
+                            out << "Moving to revive at corpse.";
+                            ai->TellPlayerNoFacing(GetMaster(), out);
+                        }
+                        moveToPos = corpsePos;
+                    }
                 }
             }
         }
@@ -174,6 +191,9 @@ bool FindCorpseAction::Execute(Event& event)
             ai->TellPlayerNoFacing(GetMaster(), out);
         }
     }
+
+    if (moveToPos.getMapId() == botPos.getMapId())
+        moveToPos.ClosestCorrectPoint(5.0f, 500.0f, bot->GetInstanceId());
 
     //Actual mobing part.
     bool moved = false;
