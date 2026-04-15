@@ -757,7 +757,7 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
 
         if (ai->GetMaster())
         {
-            ai->TellPlayerNoFacing(ai->GetMaster(), out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, false);
+            ai->TellPlayerNoFacing(ai->GetMaster(), out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, true);
         }
         else
         {

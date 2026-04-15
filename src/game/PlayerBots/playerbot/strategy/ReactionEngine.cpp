@@ -245,7 +245,7 @@ bool ReactionEngine::ListenAndExecute(Action* action, Event& event)
         if(actionExecuted)
             out << " (duration: " << ((float)incomingReaction.GetDuration() / static_cast<float>(IN_MILLISECONDS)) << "s)";
 
-        ai->TellPlayerNoFacing(ai->GetMaster(), out);
+        ai->TellPlayerNoFacing(ai->GetMaster(), out, PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, true, true);
     }
 
     actionExecuted = actionExecutionListeners.OverrideResult(action, actionExecuted, event);
