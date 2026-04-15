@@ -20,6 +20,99 @@ namespace
 {
     constexpr char kDecisionTracePrefix[] = "[PBTRACE]";
 
+    uint8 GetStarterZoneThreshold(uint32 zoneId, uint32 areaId)
+    {
+        const uint32 id = zoneId ? zoneId : areaId;
+        switch (id)
+        {
+            case 12:   // Elwynn Forest / Northshire
+            case 40:
+            case 1:    // Dun Morogh / Coldridge Valley
+            case 38:
+            case 141:  // Teldrassil / Shadowglen
+            case 148:
+            case 14:   // Durotar / Valley of Trials
+            case 17:
+            case 85:   // Tirisfal Glades / Deathknell
+            case 130:
+            case 215:  // Mulgore / Camp Narache
+                return 6;
+            default:
+                return 0;
+        }
+    }
+
+    enum class StarterCluster : uint8
+    {
+        None = 0,
+        AllianceEastern,
+        NightElf,
+        OrcTroll,
+        Tauren,
+        Undead
+    };
+
+    StarterCluster GetStarterCluster(uint8 race, uint32 zoneId, uint32 areaId)
+    {
+        const uint32 id = zoneId ? zoneId : areaId;
+
+        switch (race)
+        {
+            case RACE_HUMAN:
+                return (id == 12 || id == 40) ? StarterCluster::AllianceEastern : StarterCluster::None;
+            case RACE_DWARF:
+                return (id == 1 || id == 38) ? StarterCluster::AllianceEastern : StarterCluster::None;
+            case RACE_NIGHTELF:
+                return (id == 141 || id == 148) ? StarterCluster::NightElf : StarterCluster::None;
+            case RACE_ORC:
+            case RACE_TROLL:
+                return (id == 14 || id == 17) ? StarterCluster::OrcTroll : StarterCluster::None;
+            case RACE_TAUREN:
+                return id == 215 ? StarterCluster::Tauren : StarterCluster::None;
+            case RACE_UNDEAD:
+                return (id == 85 || id == 130) ? StarterCluster::Undead : StarterCluster::None;
+            default:
+                return StarterCluster::None;
+        }
+    }
+
+    bool IsStarterRepTraveler(Player* bot)
+    {
+        if (!bot)
+            return false;
+
+        return (bot->GetGUIDLow() % 100) < 8;
+    }
+
+    bool IsStarterZoneForRace(uint8 race, uint32 zoneId, uint32 areaId)
+    {
+        switch (race)
+        {
+            case RACE_HUMAN:     return zoneId == 12 || areaId == 12 || zoneId == 40 || areaId == 40;
+            case RACE_DWARF:     return zoneId == 1 || areaId == 1 || zoneId == 38 || areaId == 38;
+            case RACE_NIGHTELF:  return zoneId == 141 || areaId == 141 || zoneId == 148 || areaId == 148;
+            case RACE_ORC:
+            case RACE_TROLL:     return zoneId == 14 || areaId == 14 || zoneId == 17 || areaId == 17;
+            case RACE_UNDEAD:    return zoneId == 85 || areaId == 85 || zoneId == 130 || areaId == 130;
+            case RACE_TAUREN:    return zoneId == 215 || areaId == 215;
+            default:             return false;
+        }
+    }
+
+    bool IsBotInStarterZone(Player* bot)
+    {
+        if (!bot)
+            return false;
+
+        const uint32 zoneId = bot->GetZoneId();
+        const uint32 areaId = sServerFacade.GetAreaId(bot);
+        const uint8 threshold = GetStarterZoneThreshold(zoneId, areaId);
+        if (!threshold || bot->GetLevel() > threshold)
+            return false;
+
+        return IsStarterZoneForRace(bot->GetRace(), zoneId, areaId);
+    }
+
     std::string FormatTravelPurpose(TravelDestinationPurpose purpose)
     {
         auto itr = TravelDestinationPurposeName.find(purpose);
@@ -225,6 +318,9 @@ namespace
     {
         if (!bot)
             return false;
+
+        if (IsBotInStarterZone(bot))
+            return true;
 
         if (HasQuestIntent(bot))
             return true;
