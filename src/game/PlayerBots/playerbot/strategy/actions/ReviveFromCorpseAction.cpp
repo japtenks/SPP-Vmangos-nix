@@ -198,24 +198,6 @@ bool FindCorpseAction::Execute(Event& event)
     //Actual mobing part.
     bool moved = false;
 
-    if (sPlayerbotAIConfig.enableDeadRecoveryTeleport &&
-        !ai->AllowActivity(DETAILED_MOVE_ACTIVITY) &&
-        !ai->HasPlayerNearby(moveToPos))
-    {
-        uint32 delay = sServerFacade.GetDistance2d(bot, corpse) / bot->GetSpeed(MOVE_RUN); //Time a bot would take to travel to it's corpse.
-        delay = std::min(delay, uint32(10 * MINUTE)); //Cap time to get to corpse at 10 minutes.
-
-        if (deadTime > delay)
-        {
-            bot->GetMotionMaster()->Clear();
-            bot->TeleportTo(moveToPos.getMapId(), moveToPos.getX(), moveToPos.getY(), moveToPos.getZ(), 0);
-            if (bot->isRealPlayer())
-                bot->SendHeartBeat();
-        }
-
-        moved = true;
-    }
-    else
     {
 #ifndef MANGOSBOT_ZERO
         if (bot->IsMovingIgnoreFlying())

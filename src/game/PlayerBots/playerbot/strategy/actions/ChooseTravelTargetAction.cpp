@@ -204,12 +204,35 @@ namespace
         return false;
     }
 
-    bool ShouldSuppressStarterRpg(Player* bot)
+    bool HasQuestIntent(Player* bot)
     {
-        if (!bot || bot->GetLevel() > 10)
+        if (!bot)
             return false;
 
-        return HasNearbyQuestContinuation(bot);
+        QuestStatusMap& questMap = bot->GetQuestStatusMap();
+        for (auto const& [questId, questStatus] : questMap)
+        {
+            if (!questId || questStatus.m_rewarded)
+                continue;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ShouldSuppressGenericRpg(Player* bot)
+    {
+        if (!bot)
+            return false;
+
+        if (HasQuestIntent(bot))
+            return true;
+
+        if (bot->GetLevel() <= 10 && HasNearbyQuestContinuation(bot))
+            return true;
+
+        return HasNearbyQuestContinuation(bot, 2500.0f);
     }
 
     bool SessionAllowsPurpose(SessionState state, TravelDestinationPurpose purpose)
@@ -1434,7 +1457,7 @@ bool RequestTravelTargetAction::isAllowed() const
 {
     TravelDestinationPurpose actionPurpose = TravelDestinationPurpose(stoi(getQualifier()));
 
-    if (actionPurpose == TravelDestinationPurpose::GenericRpg && ShouldSuppressStarterRpg(bot))
+    if (actionPurpose == TravelDestinationPurpose::GenericRpg && ShouldSuppressGenericRpg(bot))
         return false;
 
     switch (actionPurpose)
