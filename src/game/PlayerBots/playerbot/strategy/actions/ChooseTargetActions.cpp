@@ -165,13 +165,20 @@ bool SelectNewTargetAction::Execute(Event& event)
         }
 
         // Let the dps/tank assist pick a target to attack
-        if (ai->HasStrategy("dps assist", BotState::BOT_STATE_NON_COMBAT))
+        Unit* dpsTarget = AI_VALUE(Unit*, "dps target");
+        if (ai->HasStrategy("dps assist", BotState::BOT_STATE_NON_COMBAT) && dpsTarget &&
+            !AI_VALUE2(bool, "invalid target", "dps target"))
         {
             return ai->DoSpecificAction("dps assist", event, true);
         }
-        else if (ai->HasStrategy("tank assist", BotState::BOT_STATE_NON_COMBAT))
+        else
         {
-            return ai->DoSpecificAction("tank assist", event, true);
+            Unit* tankTarget = AI_VALUE(Unit*, "tank target");
+            if (ai->HasStrategy("tank assist", BotState::BOT_STATE_NON_COMBAT) && tankTarget &&
+                !AI_VALUE2(bool, "invalid target", "tank target"))
+            {
+                return ai->DoSpecificAction("tank assist", event, true);
+            }
         }
     }
 
