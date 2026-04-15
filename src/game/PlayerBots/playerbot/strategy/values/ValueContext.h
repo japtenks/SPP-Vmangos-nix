@@ -76,6 +76,7 @@
 #include "SnareTargetValue.h"
 #include "Stances.h"
 #include "QuestValues.h"
+#include "QuestPriorityValue.h"
 #include "BudgetValues.h"
 #include "MaintenanceValues.h"
 #include "GroupValues.h"
@@ -328,6 +329,8 @@ namespace ai
             creators["need quest reward"] = [](PlayerbotAI* ai) { return new NeedQuestRewardValue(ai); };
             creators["need quest objective"] = [](PlayerbotAI* ai) { return new NeedQuestObjectiveValue(ai); };
             creators["need for quest"] = [](PlayerbotAI* ai) { return new NeedForQuestValue(ai); };
+            creators["quest priority"] = [](PlayerbotAI* ai) { return new QuestPriorityValue(ai); };
+            creators["active quest priority list"] = [](PlayerbotAI* ai) { return new ActiveQuestPriorityListValue(ai); };
             creators["can use item on"] = [](PlayerbotAI* ai) { return new CanUseItemOn(ai); };
             creators["quest reward"] = [](PlayerbotAI* ai) { return new QuestRewardValue(ai); };
             creators["has nearby quest taker"] = [](PlayerbotAI* ai) { return new HasNearbyQuestTakerValue(ai); };
