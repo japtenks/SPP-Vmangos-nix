@@ -754,7 +754,7 @@ namespace
         float score = 0.0f;
         const uint32 destinationQuestId = GetDestinationQuestId(destination);
 
-        TravelTarget* currentTarget = AI_VALUE(TravelTarget*, "travel target");
+        TravelTarget* currentTarget = ai->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
         if (currentTarget && currentTarget->GetDestination())
         {
             const uint32 currentQuestId = GetDestinationQuestId(currentTarget->GetDestination());
