@@ -2712,7 +2712,7 @@ bool MoveOutOfEnemyContactAction::isUseful()
         return false;
 
     Unit* target = AI_VALUE(Unit*, "current target");
-    if (!target)
+    if (!target || !target->IsInWorld() || !sServerFacade.IsAlive(target))
         return false;
 
     if (!bot->CanReachWithMeleeAutoAttack(target))
@@ -2798,7 +2798,7 @@ bool SetBehindTargetAction::isUseful()
         return false;
 
     Unit* target = AI_VALUE(Unit*, "current target");
-    if (!target)
+    if (!target || !target->IsInWorld() || !sServerFacade.IsAlive(target))
         return false;
 
     if (!bot->CanReachWithMeleeAutoAttack(target))
@@ -2820,7 +2820,7 @@ bool SetBehindTargetAction::isPossible()
     {
         // Check if the target is targeting the bot
         Unit* target = AI_VALUE(Unit*, "current target");
-        if (target)
+        if (target && target->IsInWorld() && sServerFacade.IsAlive(target))
         {
             // If the target is a player
             Player* player = dynamic_cast<Player*>(target);

@@ -596,13 +596,31 @@ bool TankAssistTrigger::IsActive()
 bool IsBehindTargetTrigger::IsActive()
 {
     Unit* target = AI_VALUE(Unit*, "current target");
-    return target && AI_VALUE2(bool, "behind", "current target");
+    return target && target->IsInWorld() && sServerFacade.IsAlive(target) &&
+        AI_VALUE2(bool, "behind", "current target");
 }
 
 bool IsNotBehindTargetTrigger::IsActive()
 {
     Unit* target = AI_VALUE(Unit*, "current target");
-    return target && !AI_VALUE2(bool, "behind", "current target");
+    if (!target || !target->IsInWorld() || !sServerFacade.IsAlive(target))
+        return false;
+
+    if (!bot->CanReachWithMeleeAutoAttack(target))
+        return false;
+
+    Player* player = dynamic_cast<Player*>(target);
+    if (player)
+    {
+        if (player->GetTargetGuid() == bot->GetObjectGuid())
+            return false;
+    }
+    else if (target->GetVictim() && target->GetVictim()->GetObjectGuid() == bot->GetObjectGuid())
+    {
+        return false;
+    }
+
+    return !AI_VALUE2(bool, "behind", "current target");
 }
 
 bool IsNotFacingTargetTrigger::IsActive()
