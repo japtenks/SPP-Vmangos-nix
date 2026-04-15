@@ -5,7 +5,8 @@
 enum class AhBotMode
 {
     Synthetic,
-    Inventory
+    Inventory,
+    Materials
 };
 
 enum class AhBotEconomyType

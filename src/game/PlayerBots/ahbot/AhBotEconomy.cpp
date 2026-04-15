@@ -484,6 +484,161 @@ bool AhBotEconomy::HasEligibleGatherer(MarketId market, ItemPrototype const* pro
     return false;
 }
 
+AhBotEconomy::SellerProfile AhBotEconomy::LoadSellerProfile(uint32 guid) const
+{
+    SellerProfile seller;
+    if (!guid)
+        return seller;
+
+    auto result = CharacterDatabase.PQuery(
+        "SELECT `guid`, `race`, `level`, `zone`, `map` FROM `characters` WHERE `guid` = '%u'",
+        guid);
+    if (!result)
+        return seller;
+
+    Field* fields = result->Fetch();
+    seller.guid = fields[0].GetUInt32();
+    seller.race = fields[1].GetUInt8();
+    seller.level = std::max<uint8>(1, fields[2].GetUInt8());
+    seller.zone = fields[3].GetUInt32();
+    seller.map = fields[4].GetUInt32();
+    return seller;
+}
+
+bool AhBotEconomy::HasCharacterSkill(uint32 guid, uint32 skillId, uint32 minValue) const
+{
+    if (!guid || !skillId)
+        return false;
+
+    auto result = CharacterDatabase.PQuery(
+        "SELECT 1 FROM `character_skills` WHERE `guid` = '%u' AND `skill` = '%u' AND `value` >= '%u' LIMIT 1",
+        guid, skillId, minValue);
+    return result != nullptr;
+}
+
+uint32 AhBotEconomy::GetSellerItemLevelFloor(ItemPrototype const* proto) const
+{
+    if (!proto)
+        return 1;
+
+    uint32 floor = std::max<uint32>(1, proto->RequiredLevel);
+    if (proto->ItemLevel > 1)
+        floor = std::max<uint32>(floor, proto->ItemLevel / 2);
+    return floor;
+}
+
+bool AhBotEconomy::IsSellerPlausibleForListing(SellerProfile const& seller, ItemPrototype const* proto, SourceType source, uint8 itemPhase) const
+{
+    if (!seller.guid || !proto)
+        return false;
+
+    const uint32 levelFloor = GetSellerItemLevelFloor(proto);
+    const uint32 softFloor = levelFloor > 8 ? levelFloor - 8 : 1;
+    const uint32 phaseFloor = itemPhase == 0 ? 1 : std::max<uint32>(softFloor, itemPhase * 10);
+
+    switch (source)
+    {
+        case SourceType::Gathered:
+        {
+            SkillType gatherSkill = SKILL_NONE;
+            if (ai::ItemUsageValue::IsItemUsedBySkill(proto, SKILL_SKINNING))
+                gatherSkill = SKILL_SKINNING;
+            else if (ai::ItemUsageValue::IsItemUsedBySkill(proto, SKILL_HERBALISM))
+                gatherSkill = SKILL_HERBALISM;
+            else if (ai::ItemUsageValue::IsItemUsedBySkill(proto, SKILL_MINING))
+                gatherSkill = SKILL_MINING;
+            else if (ai::ItemUsageValue::IsItemUsedBySkill(proto, SKILL_FISHING))
+                gatherSkill = SKILL_FISHING;
+
+            if (gatherSkill == SKILL_NONE || !HasCharacterSkill(seller.guid, gatherSkill))
+                return false;
+
+            return seller.level >= std::max<uint32>(1, phaseFloor);
+        }
+        case SourceType::Crafted:
+        {
+            std::vector<CraftSpellInfo> const& spells = const_cast<AhBotEconomy*>(this)->GetCraftSpellsForItem(proto->ItemId);
+            for (CraftSpellInfo const& craft : spells)
+            {
+                if (!craft.skillId)
+                    continue;
+
+                if (HasCharacterSkill(seller.guid, craft.skillId, std::max<uint32>(1, craft.requiredSkillRank)))
+                    return seller.level >= std::max<uint32>(1, phaseFloor);
+            }
+
+            static const SkillType tradeSkills[] = {
+                SKILL_TAILORING, SKILL_LEATHERWORKING, SKILL_ENGINEERING, SKILL_BLACKSMITHING,
+                SKILL_ALCHEMY, SKILL_ENCHANTING, SKILL_COOKING, SKILL_FIRST_AID
+            };
+            for (SkillType skill : tradeSkills)
+            {
+                if (ai::ItemUsageValue::IsItemUsedBySkill(proto, skill) && HasCharacterSkill(seller.guid, skill))
+                    return seller.level >= std::max<uint32>(1, phaseFloor);
+            }
+
+            return false;
+        }
+        case SourceType::VendorRecipeOrSpecial:
+            return seller.level >= std::max<uint32>(10, phaseFloor);
+        case SourceType::RaidDrop:
+            return seller.level >= std::max<uint32>(55, levelFloor);
+        case SourceType::DungeonDrop:
+            return seller.level >= std::max<uint32>(18, phaseFloor);
+        case SourceType::MobDrop:
+        case SourceType::WorldDrop:
+        default:
+            return seller.level >= std::max<uint32>(1, phaseFloor);
+    }
+}
+
+uint32 AhBotEconomy::PickProfileSeller(MarketId market, ItemPrototype const* proto, SourceType source, uint8 itemPhase, uint32 fallbackSellerGuid) const
+{
+    std::vector<uint32> candidates;
+    SellerProfile fallback = LoadSellerProfile(fallbackSellerGuid);
+    if (fallback.guid && IsCharacterInMarket(market, fallback.race) &&
+        IsSellerPlausibleForListing(fallback, proto, source, itemPhase))
+    {
+        candidates.push_back(fallback.guid);
+    }
+
+    std::string accounts = GetRandomBotAccountsCsv();
+    if (accounts.empty())
+        return candidates.empty() ? 0 : candidates[0];
+
+    auto result = CharacterDatabase.PQuery(
+        "SELECT `guid`, `race`, `level`, `zone`, `map` FROM `characters` WHERE `account` IN (%s)",
+        accounts.c_str());
+    if (!result)
+        return candidates.empty() ? 0 : candidates[0];
+
+    do
+    {
+        Field* fields = result->Fetch();
+        SellerProfile seller;
+        seller.guid = fields[0].GetUInt32();
+        seller.race = fields[1].GetUInt8();
+        seller.level = std::max<uint8>(1, fields[2].GetUInt8());
+        seller.zone = fields[3].GetUInt32();
+        seller.map = fields[4].GetUInt32();
+
+        if (!IsCharacterInMarket(market, seller.race))
+            continue;
+
+        if (std::find(candidates.begin(), candidates.end(), seller.guid) != candidates.end())
+            continue;
+
+        if (IsSellerPlausibleForListing(seller, proto, source, itemPhase))
+            candidates.push_back(seller.guid);
+    }
+    while (result->NextRow());
+
+    if (candidates.empty())
+        return 0;
+
+    return candidates[urand(0, candidates.size() - 1)];
+}
+
 bool AhBotEconomy::HasNormalLaneUnlock(MarketId market, ItemPrototype const* proto, SourceType source, uint8 itemPhase)
 {
     if (!proto || itemPhase > sAhBotConfig.phase)
@@ -593,6 +748,20 @@ PostingPlan AhBotEconomy::BuildPostingPlan(uint32 auctionHouseId, Category* cate
         uint8 evidencePhase = GetEvidencePhase(evidence);
         uint8 phaseDistance = plan.progressionPhase > evidencePhase ? plan.progressionPhase - evidencePhase : 0;
         plan.priceMultiplier = 1.75f + 0.5f * float(phaseDistance);
+        return plan;
+    }
+
+    if (sAhBotConfig.mode == AhBotMode::Materials)
+    {
+        plan.sellerGuid = PickProfileSeller(market, proto, plan.sourceType, plan.progressionPhase, fallbackSellerGuid);
+        if (!plan.sellerGuid)
+        {
+            plan.allowed = false;
+            return plan;
+        }
+
+        plan.flags |= AuctionFlagBackfill | AuctionFlagSilentExpiry;
+        plan.priceMultiplier = 1.0f;
         return plan;
     }
 

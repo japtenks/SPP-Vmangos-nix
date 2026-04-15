@@ -109,6 +109,15 @@ namespace ahbot
             uint32 requiredSkillRank = 0;
         };
 
+        struct SellerProfile
+        {
+            uint32 guid = 0;
+            uint8 race = 0;
+            uint8 level = 1;
+            uint32 zone = 0;
+            uint32 map = 0;
+        };
+
         struct AuctionMeta
         {
             bool found = false;
@@ -137,6 +146,11 @@ namespace ahbot
         bool HasNormalLaneUnlock(MarketId market, ItemPrototype const* proto, SourceType source, uint8 itemPhase);
         bool HasEligibleCrafter(MarketId market, ItemPrototype const* proto);
         bool HasEligibleGatherer(MarketId market, ItemPrototype const* proto) const;
+        SellerProfile LoadSellerProfile(uint32 guid) const;
+        bool HasCharacterSkill(uint32 guid, uint32 skillId, uint32 minValue = 1) const;
+        uint32 GetSellerItemLevelFloor(ItemPrototype const* proto) const;
+        bool IsSellerPlausibleForListing(SellerProfile const& seller, ItemPrototype const* proto, SourceType source, uint8 itemPhase) const;
+        uint32 PickProfileSeller(MarketId market, ItemPrototype const* proto, SourceType source, uint8 itemPhase, uint32 fallbackSellerGuid) const;
         InventoryCandidate FindInventoryCandidate(MarketId market, uint32 itemId, uint32 desiredStackCount) const;
         uint32 PickSyntheticSeller(MarketId market, uint32 fallbackSellerGuid) const;
         std::vector<CraftSpellInfo> const& GetCraftSpellsForItem(uint32 itemId);

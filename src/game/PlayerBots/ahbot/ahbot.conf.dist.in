@@ -12,7 +12,11 @@ ConfVersion=2019051400
 
 # AhBot runtime
 AhBot.Enabled = 1
-AhBot.Type = inventory
+AhBot.Type = materials
+# Posting source policy:
+# materials: choose a real seller bot as the point of view for plausible listings, then post synthetic stock.
+# real_inventory/inventory: only post items that actually exist in the seller bot's bags.
+# synthetic: fully synthetic posting without seller plausibility checks.
 # Auction market-maker policy:
 # legacy: no subsidy. AhBot only completes purchases buyer bots can actually afford.
 # growth: AhBot silently seeds only the missing shortfall, with caps and sinks.

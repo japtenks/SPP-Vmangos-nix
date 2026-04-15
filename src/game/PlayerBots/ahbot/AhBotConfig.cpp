@@ -54,8 +54,13 @@ bool AhBotConfig::Initialize()
     stackReducePrice = config.GetIntDefault("AhBot.StackReducePrice", 1000000);
     priceQualityMultiplier = config.GetFloatDefault("AhBot.PriceQualityMultiplier", 1.0f);
     underPriceProbability = config.GetFloatDefault("AhBot.UnderPriceProbability", 0.05f);
-    std::string modeName = config.GetStringDefault("AhBot.Type", "inventory");
-    mode = modeName == "synthetic" ? AhBotMode::Synthetic : AhBotMode::Inventory;
+    std::string modeName = config.GetStringDefault("AhBot.Type", "materials");
+    if (modeName == "synthetic")
+        mode = AhBotMode::Synthetic;
+    else if (modeName == "inventory" || modeName == "real_inventory")
+        mode = AhBotMode::Inventory;
+    else
+        mode = AhBotMode::Materials;
     std::string economyTypeName = config.GetStringDefault("AhBot.Economy.Type", "legacy");
     economyType = economyTypeName == "growth" ? AhBotEconomyType::Growth : AhBotEconomyType::Legacy;
     backfillEnabled = config.GetBoolDefault("AhBot.Backfill.Enabled", true);
