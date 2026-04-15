@@ -2708,7 +2708,17 @@ bool MoveOutOfEnemyContactAction::Execute(Event& event)
 
 bool MoveOutOfEnemyContactAction::isUseful()
 {
-    return MovementAction::isUseful() && AI_VALUE2(bool, "inside target", "current target");
+    if (!MovementAction::isUseful())
+        return false;
+
+    Unit* target = AI_VALUE(Unit*, "current target");
+    if (!target)
+        return false;
+
+    if (!bot->CanReachWithMeleeAutoAttack(target))
+        return false;
+
+    return AI_VALUE2(bool, "inside target", "current target") && !AI_VALUE2(bool, "behind", "current target");
 }
 
 bool SetFacingTargetAction::Execute(Event& event)
@@ -2749,11 +2759,12 @@ bool SetBehindTargetAction::Execute(Event& event)
     if (!target)
         return false;
 
-    float angle = GetFollowAngle() / 3 + target->GetOrientation() + M_PI / 2.0f;
+    const float angle = target->GetOrientation() + static_cast<float>(M_PI);
+    const float preferredDistance = bot->GetObjectBoundingRadius() + target->GetObjectBoundingRadius() + 0.75f;
+    float distance = preferredDistance > sPlayerbotAIConfig.contactDistance ? preferredDistance : sPlayerbotAIConfig.contactDistance;
 
-    float distance = bot->GetMeleeReach() * 0.8f;
-    float x = target->GetPositionX() + cos(target->GetOrientation()) * -1.0f * distance,
-        y = target->GetPositionY() + sin(target->GetOrientation()) * -1.0f * distance,
+    float x = target->GetPositionX() + std::cos(angle) * distance,
+        y = target->GetPositionY() + std::sin(angle) * distance,
         z = target->GetPositionZ();
     bot->UpdateGroundPositionZ(x, y, z);
 
@@ -2771,8 +2782,8 @@ bool SetBehindTargetAction::Execute(Event& event)
     if (!moved && !isLos)
     {
         distance = sPlayerbotAIConfig.contactDistance;
-        x = target->GetPositionX() + cos(angle) * distance;
-        y = target->GetPositionY() + sin(angle) * distance;
+        x = target->GetPositionX() + std::cos(angle) * distance;
+        y = target->GetPositionY() + std::sin(angle) * distance;
         z = target->GetPositionZ();
         bot->UpdateGroundPositionZ(x, y, z);
         moved = MoveTo(bot->GetMapId(), x, y, z);
@@ -2783,18 +2794,24 @@ bool SetBehindTargetAction::Execute(Event& event)
 
 bool SetBehindTargetAction::isUseful()
 {
-    if(!MovementAction::isUseful())
+    if (!MovementAction::isUseful())
         return false;
 
     Unit* target = AI_VALUE(Unit*, "current target");
-    if (target && !false /* IsFacingTargetsBack not in vmangos */)
-    {
-        // Don't move behind if the target is too far away
-        const float distance = bot->GetDistance(target);
-        return distance <= 15.0f;
-    }
+    if (!target)
+        return false;
 
-    return false;
+    if (!bot->CanReachWithMeleeAutoAttack(target))
+        return false;
+
+    if (AI_VALUE2(bool, "behind", "current target"))
+        return false;
+
+    if (AI_VALUE2(bool, "inside target", "current target"))
+        return false;
+
+    const float distance = bot->GetDistance(target);
+    return distance <= 8.0f;
 }
 
 bool SetBehindTargetAction::isPossible()
