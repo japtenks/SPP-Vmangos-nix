@@ -307,9 +307,35 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         return false;
 
     const Quest* quest = GetQuestTemplate();
+    const WorldPosition& botPosition = info.GetPosition();
+    WorldPosition const* closestPoint = GetClosestPoint(botPosition);
+    uint32 botZoneId = 0;
+    uint32 botAreaId = 0;
+    sTerrainMgr.GetZoneAndAreaId(botZoneId, botAreaId, botPosition.getMapId(), botPosition.getX(), botPosition.getY(), botPosition.getZ());
+
+    uint32 destinationZoneId = 0;
+    uint32 destinationAreaId = 0;
+    if (closestPoint)
+    {
+        sTerrainMgr.GetZoneAndAreaId(destinationZoneId, destinationAreaId,
+            closestPoint->getMapId(), closestPoint->getX(), closestPoint->getY(), closestPoint->getZ());
+    }
+
+    const StarterCluster botCluster = GetDestinationStarterCluster(botZoneId, botAreaId);
+    const StarterCluster destinationCluster = GetDestinationStarterCluster(destinationZoneId, destinationAreaId);
+    const bool localStarterDestination =
+        GetRelation() == 0 &&
+        closestPoint &&
+        closestPoint->getMapId() == botPosition.getMapId() &&
+        botCluster != StarterCluster::None &&
+        botCluster == destinationCluster;
+    const bool starterBot = localStarterDestination && info.GetLevel() <= GetStarterZoneThreshold(botZoneId, botAreaId);
 
     if (GetRelation() == 0)
     {
+        if (starterBot)
+            return true;
+
         if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
             return false;
 
@@ -371,6 +397,16 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
     {
         if (!bot->GetMap()->IsContinent() && (GetClosestPoint(bot)->getMapId() != bot->GetMapId())) //This gives issues for bot->CanTakeQuest so stop here.
             return false;
+
+        if (IsBotInStarterZone(bot))
+        {
+            const Quest* quest = GetQuestTemplate();
+            WorldPosition const* closestPoint = GetClosestPoint(bot);
+            if (quest && closestPoint && closestPoint->getMapId() == bot->GetMapId() &&
+                IsDestinationInBotsStarterZone(bot, closestPoint) &&
+                bot->CanTakeQuest(quest, false))
+                return true;
+        }
 
         if (forceThisQuest)
         {
