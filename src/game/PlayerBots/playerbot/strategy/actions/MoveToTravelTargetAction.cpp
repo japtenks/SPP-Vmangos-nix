@@ -27,6 +27,62 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 
     WorldPosition botLocation(bot);
     WorldPosition location = *target->GetPosition();
+
+    if (QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(target->GetDestination()))
+    {
+        const int32 objectiveEntry = objectiveDestination->GetEntry();
+        const float localRoamRange = 35.0f;
+
+        if (objectiveEntry > 0 && location.distance(bot) <= localRoamRange)
+        {
+            std::list<ObjectGuid> possibleTargets = AI_VALUE(std::list<ObjectGuid>, "possible targets");
+            for (auto& possibleTarget : possibleTargets)
+            {
+                if (possibleTarget.GetEntry() != objectiveEntry || !possibleTarget.IsCreature())
+                    continue;
+
+                Creature* creature = ai->GetCreature(possibleTarget);
+                if (!creature || !creature->IsAlive())
+                    continue;
+
+                if (sServerFacade.GetDistance2d(bot, creature) > localRoamRange)
+                    continue;
+
+                ai->TellDebug(ai->GetMaster(),
+                    "[PBTRACE] move_to_travel local objective roam dest=\"" + target->GetDestination()->GetTitle() +
+                    "\" local_target=" + std::to_string(objectiveEntry),
+                    "debug travel");
+                target->SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
+                return true;
+            }
+        }
+        else if (objectiveEntry < 0 && location.distance(bot) <= INTERACTION_DISTANCE * 4.0f)
+        {
+            std::list<ObjectGuid> possibleObjects = bot->GetMap()->IsDungeon() ?
+                AI_VALUE(std::list<ObjectGuid>, "nearest game objects") :
+                AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
+
+            for (auto& possibleObject : possibleObjects)
+            {
+                if (possibleObject.GetEntry() != (-1 * objectiveEntry) || !possibleObject.IsGameObject())
+                    continue;
+
+                GameObject* gameObject = ai->GetGameObject(possibleObject);
+                if (!gameObject || !gameObject->isSpawned())
+                    continue;
+
+                if (sServerFacade.GetDistance2d(bot, gameObject) > INTERACTION_DISTANCE * 4.0f)
+                    continue;
+
+                ai->TellDebug(ai->GetMaster(),
+                    "[PBTRACE] move_to_travel local objective object dest=\"" + target->GetDestination()->GetTitle() +
+                    "\" local_target=" + std::to_string(-objectiveEntry),
+                    "debug travel");
+                target->SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
+                return true;
+            }
+        }
+    }
     
     Group* group = bot->GetGroup();
     if (ai->IsGroupLeader() && !urand(0, 1) && !bot->IsInCombat())

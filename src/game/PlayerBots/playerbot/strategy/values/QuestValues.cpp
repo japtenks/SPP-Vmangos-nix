@@ -726,11 +726,19 @@ bool HasNearbyQuestTakerValue::Calculate()
 {
 	std::list<ObjectGuid> possibleTargets = AI_VALUE(std::list<ObjectGuid>, "possible rpg targets");
 
-	int32 travelEntry = AI_VALUE(TravelTarget*, "travel target")->GetEntry();
+	TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+	int32 travelEntry = travelTarget->GetEntry();
+	bool allowCurrentTravelTarget = false;
+
+	if (travelTarget && travelTarget->GetDestination())
+	{
+		if (QuestRelationTravelDestination* questDest = dynamic_cast<QuestRelationTravelDestination*>(travelTarget->GetDestination()))
+			allowCurrentTravelTarget = questDest->GetPurpose() == TravelDestinationPurpose::QuestTaker;
+	}
 	
 	for (auto& target : possibleTargets)
 	{
-		if (target.GetEntry() == travelEntry)
+		if (!allowCurrentTravelTarget && target.GetEntry() == travelEntry)
 			continue;
 
 		if(AI_VALUE2(bool, "can turn in quest npc", target.GetEntry()))
@@ -741,7 +749,7 @@ bool HasNearbyQuestTakerValue::Calculate()
 
 	for (auto& target : possibleObjects)
 	{
-		if (target.GetEntry() == (travelEntry * -1))
+		if (!allowCurrentTravelTarget && target.GetEntry() == (travelEntry * -1))
 			continue;
 
 		if (AI_VALUE2(bool, "can turn in quest npc", target.GetEntry()))

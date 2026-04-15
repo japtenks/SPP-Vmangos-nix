@@ -603,6 +603,12 @@ bool RpgQuestUseTrigger::IsActive()
         return false;
 
     GuidPosition guidP(getGuidP());
+
+    if (guidP.IsGameObject())
+    {
+        if (AI_VALUE2(bool, "need for quest", std::to_string(-1 * (int32)guidP.GetEntry())))
+            return true;
+    }
     
     switch (guidP.GetEntry())
     {

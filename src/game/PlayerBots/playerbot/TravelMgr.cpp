@@ -99,7 +99,7 @@ namespace
         }
     }
 
-    bool IsStarterRepTraveler(Player const* bot)
+    bool IsStarterRepTraveler(Player* bot)
     {
         if (!bot)
             return false;
@@ -124,7 +124,7 @@ namespace
         }
     }
 
-    bool IsBotInStarterZone(Player const* bot)
+    bool IsBotInStarterZone(Player* bot)
     {
         if (!bot)
             return false;
@@ -138,7 +138,7 @@ namespace
         return IsStarterZoneForRace(bot->GetRace(), zoneId, areaId);
     }
 
-    bool IsDestinationInBotsStarterZone(Player const* bot, WorldPosition const* destination)
+    bool IsDestinationInBotsStarterZone(Player* bot, WorldPosition const* destination)
     {
         if (!bot || !destination)
             return false;

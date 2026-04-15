@@ -10,10 +10,19 @@ using namespace ai;
 bool HasNearbyQuestTakerTrigger::IsActive()
 {
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
-    if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK) //We are not currently working on a target.
+    bool currentQuestTakerWork = false;
+
+    if (target && target->GetDestination())
+    {
+        if (QuestRelationTravelDestination* questDest = dynamic_cast<QuestRelationTravelDestination*>(target->GetDestination()))
+            currentQuestTakerWork = target->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK &&
+                questDest->GetPurpose() == TravelDestinationPurpose::QuestTaker;
+    }
+
+    if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && !currentQuestTakerWork) //We are not currently working on a target.
         return false;
 
-    if (target->GetExpiredTime() < 2 * MINUTE) //The target was set more than 2 minutes ago.
+    if (!currentQuestTakerWork && target->GetExpiredTime() < 2 * MINUTE) //The target was set more than 2 minutes ago.
         return false;
 
     return AI_VALUE(bool, "has nearby quest taker");
