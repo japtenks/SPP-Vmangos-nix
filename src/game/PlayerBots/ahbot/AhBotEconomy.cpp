@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <sstream>
+#include <limits>
 
 using namespace ahbot;
 
@@ -154,21 +155,100 @@ bool AhBotEconomy::ChangeCharacterMoney(uint32 guid, int64 delta) const
     return true;
 }
 
-void AhBotEconomy::FinalizeBuyerPayment(AuctionEntry* auction)
+bool AhBotEconomy::IsGrowthMode() const
+{
+    return sAhBotConfig.economyType == AhBotEconomyType::Growth;
+}
+
+uint32 AhBotEconomy::GetCycleStamp() const
+{
+    const uint32 interval = std::max<uint32>(1, sAhBotConfig.updateInterval);
+    return uint32(time(nullptr) / interval);
+}
+
+uint32 AhBotEconomy::GetDayStamp() const
+{
+    return uint32(time(nullptr) / (24 * 60 * 60));
+}
+
+AhBotEconomy::SubsidyBudget& AhBotEconomy::GetSubsidyBudget(uint32 auctionHouseId)
+{
+    SubsidyBudget& budget = subsidyBudgets[auctionHouseId];
+    const uint32 cycleStamp = GetCycleStamp();
+    const uint32 dayStamp = GetDayStamp();
+    if (budget.cycleStamp != cycleStamp)
+    {
+        budget.cycleStamp = cycleStamp;
+        budget.cycleInjected = 0;
+    }
+    if (budget.dayStamp != dayStamp)
+    {
+        budget.dayStamp = dayStamp;
+        budget.dayInjected = 0;
+    }
+    return budget;
+}
+
+bool AhBotEconomy::TrySeedBuyerShortfall(AuctionEntry* auction, uint32 shortfall, uint32 currentMoney)
+{
+    if (!auction || !shortfall)
+        return true;
+
+    if (!IsGrowthMode())
+        return false;
+
+    SubsidyBudget& budget = GetSubsidyBudget(auction->GetHouseId());
+    const uint32 cycleRemaining = sAhBotConfig.growthSubsidyCycleCap == 0
+        ? std::numeric_limits<uint32>::max()
+        : (budget.cycleInjected >= sAhBotConfig.growthSubsidyCycleCap ? 0 : sAhBotConfig.growthSubsidyCycleCap - budget.cycleInjected);
+    const uint32 dayRemaining = sAhBotConfig.growthSubsidyDailyCap == 0
+        ? std::numeric_limits<uint32>::max()
+        : (budget.dayInjected >= sAhBotConfig.growthSubsidyDailyCap ? 0 : sAhBotConfig.growthSubsidyDailyCap - budget.dayInjected);
+    const uint32 allowed = std::min(shortfall, std::min(cycleRemaining, dayRemaining));
+    if (allowed < shortfall)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR,
+            "AhBot growth subsidy cap blocked buyer %u shortfall %u/%u copper for auction %u (had %u)",
+            auction->bidder, shortfall, auction->bid, auction->Id, currentMoney);
+        return false;
+    }
+
+    if (!ChangeCharacterMoney(auction->bidder, int64(shortfall)))
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_ERROR,
+            "AhBot growth subsidy failed to seed %u copper for buyer %u on auction %u",
+            shortfall, auction->bidder, auction->Id);
+        return false;
+    }
+
+    budget.cycleInjected += shortfall;
+    budget.dayInjected += shortfall;
+    AdjustTreasury(auction->GetHouseId(), int64(shortfall));
+
+    if (sAhBotConfig.growthLogSubsidy)
+    {
+        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL,
+            "AhBot growth subsidy injected %u copper for buyer %u on auction %u (cycle %u, day %u)",
+            shortfall, auction->bidder, auction->Id, budget.cycleInjected, budget.dayInjected);
+    }
+
+    return true;
+}
+
+bool AhBotEconomy::FinalizeBuyerPayment(AuctionEntry* auction)
 {
     if (!auction || !auction->bidder || !IsAhBotCharacter(auction->bidder))
-        return;
+        return true;
 
-    uint32 currentMoney = GetCharacterMoney(auction->bidder);
-    uint32 debit = std::min(currentMoney, auction->bid);
-    if (debit)
-        ChangeCharacterMoney(auction->bidder, -int64(debit));
-
-    if (debit < auction->bid)
+    const uint32 currentMoney = GetCharacterMoney(auction->bidder);
+    if (currentMoney < auction->bid && !TrySeedBuyerShortfall(auction, auction->bid - currentMoney, currentMoney))
     {
         sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "AhBot buyer %u only had %u of %u copper at auction finalize for auction %u",
-            auction->bidder, debit, auction->bid, auction->Id);
+            auction->bidder, currentMoney, auction->bid, auction->Id);
+        return false;
     }
+
+    return ChangeCharacterMoney(auction->bidder, -int64(auction->bid));
 }
 
 uint32 AhBotEconomy::ApplySellerPayout(AuctionEntry* auction, uint32 baseProfit)

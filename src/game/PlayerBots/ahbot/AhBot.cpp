@@ -349,7 +349,10 @@ int AhBot::Answer(int auction, Category* category, ItemBag* inAuctionItems)
         if (!curPrice) curPrice = entry->startbid;
         if (!curPrice) curPrice = entry->buyout;
 
-        uint32 bidder = GetRandomBidder(auctionIds[auction]);
+        uint32 requiredMoney = curPrice + 1 + bidPrice / 10;
+        if (entry->buyout)
+            requiredMoney = std::max(requiredMoney, entry->buyout);
+        uint32 bidder = GetRandomBidder(auctionIds[auction], requiredMoney);
         if (!bidder)
         {
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR,  "No bidders for auction %d", auctionIds[auction]);
@@ -977,7 +980,7 @@ bool AhBot::IsBotAuction(uint32 bidder)
     return allBidders.find(bidder) != allBidders.end();
 }
 
-uint32 AhBot::GetRandomBidder(uint32 auctionHouse)
+uint32 AhBot::GetRandomBidder(uint32 auctionHouse, uint32 requiredMoney)
 {
     std::vector<uint32> guids = bidders[factions[auctionHouse]];
     if (guids.empty())
@@ -989,6 +992,10 @@ uint32 AhBot::GetRandomBidder(uint32 auctionHouse)
         uint32 guid = *i;
         std::string name;
         if (!sObjectMgr.GetPlayerNameByGUID(ObjectGuid(HIGHGUID_PLAYER, guid), name))
+            continue;
+
+        if (requiredMoney && sAhBotConfig.economyType == AhBotEconomyType::Legacy &&
+            !sAhBotEconomy.HasEnoughMoney(guid, requiredMoney))
             continue;
 
         online.push_back(guid);

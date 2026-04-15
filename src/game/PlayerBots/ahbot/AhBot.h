@@ -48,7 +48,7 @@ namespace ahbot
         int32 GetBuyPrice(const ItemPrototype* proto);
         double GetRarityPriceMultiplier(const ItemPrototype* proto);
         bool IsUsedBySkill(const ItemPrototype* proto, uint32 skillId);
-        uint32 SelectRandomBidder(uint32 auctionHouse) { return GetRandomBidder(auctionHouse); }
+        uint32 SelectRandomBidder(uint32 auctionHouse, uint32 requiredMoney = 0) { return GetRandomBidder(auctionHouse, requiredMoney); }
 
     private:
         int Answer(int auction, Category* category, ItemBag* inAuctionItems);
@@ -62,7 +62,7 @@ namespace ahbot
         void CheckCategoryMultipliers();
         void updateMarketPrice(uint32 itemId, double price, uint32 auctionHouse);
         bool IsBotAuction(uint32 bidder);
-        uint32 GetRandomBidder(uint32 auctionHouse);
+        uint32 GetRandomBidder(uint32 auctionHouse, uint32 requiredMoney = 0);
         void LoadRandomBots();
         uint32 GetAnswerCount(uint32 itemId, uint32 auctionHouse, uint32 withinTime);
         std::vector<AuctionEntry*> LoadAuctions(const AuctionHouseObject::AuctionEntryMap& auctionEntryMap, Category*& category,

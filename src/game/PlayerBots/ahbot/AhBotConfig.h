@@ -8,6 +8,12 @@ enum class AhBotMode
     Inventory
 };
 
+enum class AhBotEconomyType
+{
+    Legacy,
+    Growth
+};
+
 enum class AhBotProgressionMode
 {
     PhaseWorld
@@ -38,6 +44,7 @@ public:
     uint32 maxItemLevel, maxRequiredLevel;
     float underPriceProbability;
     AhBotMode mode;
+    AhBotEconomyType economyType;
     bool backfillEnabled;
     AhBotProgressionMode progressionMode;
     uint8 phase;
@@ -51,6 +58,9 @@ public:
     bool neutralMarketEnabled;
     std::string neutralMarketMode;
     std::string buyMode;
+    uint32 growthSubsidyCycleCap;
+    uint32 growthSubsidyDailyCap;
+    bool growthLogSubsidy;
     std::set<uint32> ignoreItemIds;
     std::set<uint32> ignoreVendorItemIds;
     bool sendmail;

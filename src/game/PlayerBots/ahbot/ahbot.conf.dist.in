@@ -13,6 +13,10 @@ ConfVersion=2019051400
 # AhBot runtime
 AhBot.Enabled = 1
 AhBot.Type = inventory
+# Auction market-maker policy:
+# legacy: no subsidy. AhBot only completes purchases buyer bots can actually afford.
+# growth: AhBot silently seeds only the missing shortfall, with caps and sinks.
+AhBot.Economy.Type = legacy
 AhBot.Backfill.Enabled = 1
 AhBot.ProgressionMode = phase_world
 AhBot.Phase = 0
@@ -25,6 +29,9 @@ AhBot.Market.Alliance.Enabled = 1
 AhBot.Market.Horde.Enabled = 1
 AhBot.Market.Neutral.Mode = separate
 AhBot.BuyMode = market_value
+AhBot.Economy.Growth.SubsidyCycleCap = 0
+AhBot.Economy.Growth.SubsidyDailyCap = 0
+AhBot.Economy.Growth.LogSubsidy = 1
 
 AhBot.MaxItemLevel = 500
 AhBot.MaxRequiredLevel = 80

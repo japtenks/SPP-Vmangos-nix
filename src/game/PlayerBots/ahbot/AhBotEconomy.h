@@ -4,6 +4,7 @@
 #include "SharedDefines.h"
 
 #include <map>
+#include <ctime>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -88,7 +89,7 @@ namespace ahbot
         bool IsAhBotCharacter(uint32 guid) const;
         uint32 GetCharacterMoney(uint32 guid) const;
         bool HasEnoughMoney(uint32 guid, uint32 amount) const;
-        void FinalizeBuyerPayment(AuctionEntry* auction);
+        bool FinalizeBuyerPayment(AuctionEntry* auction);
         uint32 ApplySellerPayout(AuctionEntry* auction, uint32 baseProfit);
         bool HandleExpiredAuction(AuctionEntry* auction);
         PostingPlan BuildPostingPlan(uint32 auctionHouseId, Category* category, ItemPrototype const* proto, uint32 desiredStackCount, uint32 fallbackSellerGuid);
@@ -117,6 +118,14 @@ namespace ahbot
             uint32 flags = 0;
         };
 
+        struct SubsidyBudget
+        {
+            uint32 cycleStamp = 0;
+            uint32 cycleInjected = 0;
+            uint32 dayStamp = 0;
+            uint32 dayInjected = 0;
+        };
+
     private:
         AhBotEconomy() = default;
 
@@ -135,9 +144,15 @@ namespace ahbot
         bool ChangeCharacterMoney(uint32 guid, int64 delta) const;
         std::string GetRandomBotAccountsCsv() const;
         bool IsCharacterInMarket(MarketId market, uint8 race) const;
+        bool IsGrowthMode() const;
+        SubsidyBudget& GetSubsidyBudget(uint32 auctionHouseId);
+        uint32 GetCycleStamp() const;
+        uint32 GetDayStamp() const;
+        bool TrySeedBuyerShortfall(AuctionEntry* auction, uint32 shortfall, uint32 currentMoney);
 
     private:
         std::unordered_map<uint32, std::vector<CraftSpellInfo>> craftSpellCache;
+        std::unordered_map<uint32, SubsidyBudget> subsidyBudgets;
     };
 }
 

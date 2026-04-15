@@ -650,24 +650,31 @@ void AuctionHouseObject::Update()
             // Or perform the transaction
             else
             {
-                sAhBotEconomy.FinalizeBuyerPayment(entry);
+                if (!sAhBotEconomy.FinalizeBuyerPayment(entry))
+                {
+                    entry->bidder = 0;
+                    entry->bid = 0;
+                    sAuctionMgr.SendAuctionExpiredMail(entry);
+                }
+                else
+                {
+                    PlayerTransactionData data;
+                    data.type = "Bid";
+                    data.parts[0].lowGuid = entry->owner;
+                    data.parts[0].itemsEntries[0] = entry->itemTemplate;
+                    Item* item = sAuctionMgr.GetAItem(entry->itemGuidLow);
+                    data.parts[0].itemsCount[0] = item ? item->GetCount() : 0;
+                    data.parts[0].itemsGuid[0] = entry->itemGuidLow;
+                    data.parts[1].lowGuid = entry->bidder;
+                    data.parts[1].money = entry->bid;
+                    sWorld.LogTransaction(data);
 
-                PlayerTransactionData data;
-                data.type = "Bid";
-                data.parts[0].lowGuid = entry->owner;
-                data.parts[0].itemsEntries[0] = entry->itemTemplate;
-                Item* item = sAuctionMgr.GetAItem(entry->itemGuidLow);
-                data.parts[0].itemsCount[0] = item ? item->GetCount() : 0;
-                data.parts[0].itemsGuid[0] = entry->itemGuidLow;
-                data.parts[1].lowGuid = entry->bidder;
-                data.parts[1].money = entry->bid;
-                sWorld.LogTransaction(data);
-
-                //we should send an "item sold" message if the seller is online
-                //we send the item to the winner
-                //we send the money to the seller
-                sAuctionMgr.SendAuctionSuccessfulMail(entry);
-                sAuctionMgr.SendAuctionWonMail(entry);
+                    //we should send an "item sold" message if the seller is online
+                    //we send the item to the winner
+                    //we send the money to the seller
+                    sAuctionMgr.SendAuctionSuccessfulMail(entry);
+                    sAuctionMgr.SendAuctionWonMail(entry);
+                }
             }
 
             // In any case clear the auction

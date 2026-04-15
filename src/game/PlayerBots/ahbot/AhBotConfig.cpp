@@ -56,6 +56,8 @@ bool AhBotConfig::Initialize()
     underPriceProbability = config.GetFloatDefault("AhBot.UnderPriceProbability", 0.05f);
     std::string modeName = config.GetStringDefault("AhBot.Type", "inventory");
     mode = modeName == "synthetic" ? AhBotMode::Synthetic : AhBotMode::Inventory;
+    std::string economyTypeName = config.GetStringDefault("AhBot.Economy.Type", "legacy");
+    economyType = economyTypeName == "growth" ? AhBotEconomyType::Growth : AhBotEconomyType::Legacy;
     backfillEnabled = config.GetBoolDefault("AhBot.Backfill.Enabled", true);
     progressionMode = AhBotProgressionMode::PhaseWorld;
     phase = std::min<uint8>(5, std::max<int32>(0, config.GetIntDefault("AhBot.Phase", 0)));
@@ -69,6 +71,9 @@ bool AhBotConfig::Initialize()
     neutralMarketMode = config.GetStringDefault("AhBot.Market.Neutral.Mode", "separate");
     neutralMarketEnabled = neutralMarketMode == "separate";
     buyMode = config.GetStringDefault("AhBot.BuyMode", "market_value");
+    growthSubsidyCycleCap = config.GetIntDefault("AhBot.Economy.Growth.SubsidyCycleCap", 0);
+    growthSubsidyDailyCap = config.GetIntDefault("AhBot.Economy.Growth.SubsidyDailyCap", 0);
+    growthLogSubsidy = config.GetBoolDefault("AhBot.Economy.Growth.LogSubsidy", true);
     LoadSet<std::set<uint32> >(config.GetStringDefault("AhBot.IgnoreItemIds", "49283,52200,8494,6345,6891,2460,37164,34835"), ignoreItemIds);
     LoadSet<std::set<uint32> >(config.GetStringDefault("AhBot.IgnoreVendorItemIds", "755,858,4592,4593,1710,3827,2455,3385"), ignoreVendorItemIds);
     sendmail = config.GetBoolDefault("AhBot.SendMail", true);
