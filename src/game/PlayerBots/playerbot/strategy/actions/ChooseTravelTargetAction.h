@@ -4,6 +4,7 @@
 #include "MovementActions.h"
 #include "GenericActions.h"
 #include "playerbot/TravelMgr.h"
+#include "playerbot/strategy/values/QuestValues.h"
 
 namespace ai
 {
