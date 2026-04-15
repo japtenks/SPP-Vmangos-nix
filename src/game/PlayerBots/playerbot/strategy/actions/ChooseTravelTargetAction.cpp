@@ -981,6 +981,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
     std::unordered_map<uint32, float> questPriorityCache;
+    const PlayerTravelInfo travelInfo(bot);
 
     bool hasTarget = false;
 
@@ -1032,7 +1033,26 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 distanceCheck = false;
             }
 
-            if (target->IsForced() || (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))
+            bool allowInactiveQuestContinuation = false;
+            const bool destinationActive = destination->IsActive(bot, travelInfo);
+            isActive[destination] = destinationActive;
+
+            if (!destinationActive && !target->IsForced())
+            {
+                if (QuestRelationTravelDestination* questRelationDestination = dynamic_cast<QuestRelationTravelDestination*>(destination))
+                {
+                    if (questRelationDestination->IsPossible(travelInfo) &&
+                        (questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver ||
+                         questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestTaker))
+                    {
+                        allowInactiveQuestContinuation = true;
+                        ai->TellDebug(requester, "Allowing distant quest continuation target despite inactive check: " +
+                            destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                    }
+                }
+            }
+
+            if (target->IsForced() || destinationActive || allowInactiveQuestContinuation)
             {
                 if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {

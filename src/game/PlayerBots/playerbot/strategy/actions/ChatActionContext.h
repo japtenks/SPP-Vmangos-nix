@@ -2,6 +2,7 @@
 
 #include "ListQuestsActions.h"
 #include "StatsAction.h"
+#include "ArchetypeAction.h"
 #include "LeaveGroupAction.h"
 #include "TellReputationAction.h"
 #include "LogLevelAction.h"
@@ -91,6 +92,7 @@ namespace ai
         {
             creators["range"] = [](PlayerbotAI* ai) { return new RangeAction(ai); };
             creators["stats"] = [](PlayerbotAI* ai) { return new StatsAction(ai); };
+            creators["archetype"] = [](PlayerbotAI* ai) { return new ArchetypeAction(ai); };
             creators["quests"] = [](PlayerbotAI* ai) { return new ListQuestsAction(ai); };
             creators["quest reward"] = [](PlayerbotAI* ai) { return new QuestRewardAction(ai); };
             creators["leave"] = [](PlayerbotAI* ai) { return new LeaveGroupAction(ai); };

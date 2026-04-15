@@ -233,15 +233,19 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         }
         else
         {
+            const bool canAcceptLowLevelQuest =
+                AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + std::to_string(GetEntry()));
+
             if (info.GetBoolValue("can fight equal"))
             {
                 if (!AI_VALUE2(bool, "group or", "following party,can accept quest npc::" + std::to_string(GetEntry()))) //Noone has yellow exclamation mark.
-                    if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + std::to_string(GetEntry()) + ",need quest reward::" + std::to_string(GetQuestId()))) //Noone can do this quest for a usefull reward.
+                    if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + std::to_string(GetEntry()) + ",need quest reward::" + std::to_string(GetQuestId())) && //Noone can do this quest for a usefull reward.
+                        !(canAcceptLowLevelQuest && info.GetLevel() <= 10)) //Do not strand low-level bots when they miss a starter or follow-up quest.
                         return false;
             }
             else
             {
-                if (!AI_VALUE2(bool, "group or", "following party,can accept quest low level npc::" + std::to_string(GetEntry()))) //Noone can pick up this quest for money.
+                if (!canAcceptLowLevelQuest) //Noone can pick up this quest for money.
                     return false;
             }
         }
