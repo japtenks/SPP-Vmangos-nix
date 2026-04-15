@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <unordered_set>
 
 using namespace ai;
 
@@ -204,6 +205,220 @@ namespace
             return;
 
         ai->TellDebug(requester ? requester : ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, "debug travel");
+    }
+
+    std::string FormatBool(bool value)
+    {
+        return value ? "yes" : "no";
+    }
+
+    std::string FormatQuestStatusLabel(QuestStatus status)
+    {
+        switch (status)
+        {
+            case QUEST_STATUS_NONE:
+                return "none";
+            case QUEST_STATUS_COMPLETE:
+                return "complete";
+            case QUEST_STATUS_INCOMPLETE:
+                return "incomplete";
+            case QUEST_STATUS_FAILED:
+                return "failed";
+            default:
+                return std::to_string(static_cast<uint32>(status));
+        }
+    }
+
+    std::string DescribeQuest(Player* bot, uint32 questId)
+    {
+        std::ostringstream out;
+        Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+        out << questId;
+        if (quest)
+            out << ":" << quest->GetTitle();
+        out << "{status=" << FormatQuestStatusLabel(bot->GetQuestStatus(questId))
+            << ",rewarded=" << FormatBool(bot->GetQuestRewardStatus(questId)) << "}";
+        return out.str();
+    }
+
+    void LogStarterQuestState(PlayerbotAI* ai, Player* requester, Player* bot, const std::string& label)
+    {
+        if (!ai || !bot || !IsBotInStarterZone(bot))
+            return;
+
+        std::vector<std::string> activeQuests;
+        QuestStatusMap& questStatusMap = bot->GetQuestStatusMap();
+        for (const auto& [questId, questStatus] : questStatusMap)
+        {
+            if (questStatus.m_rewarded)
+                continue;
+
+            activeQuests.push_back(DescribeQuest(bot, questId));
+        }
+
+        if (activeQuests.empty())
+        {
+            TellTravelTrace(ai, requester, "starter_quest_diag " + label + " active_quests=none");
+            return;
+        }
+
+        TellTravelTrace(ai, requester, "starter_quest_diag " + label + " active_quests=" + Qualified::MultiQualify(activeQuests, " | "));
+    }
+
+    void LogStarterQuestFetches(PlayerbotAI* ai, Player* requester, Player* bot,
+        std::vector<std::tuple<uint32, int32, float>> const& destinationFetches)
+    {
+        if (!ai || !bot || !IsBotInStarterZone(bot))
+            return;
+
+        for (const auto& [purpose, questId, range] : destinationFetches)
+        {
+            std::ostringstream out;
+            out << "starter_quest_diag request_fetch purpose=" << purpose;
+            if (questId > 0)
+                out << " quest=" << DescribeQuest(bot, static_cast<uint32>(questId));
+            else
+                out << " quest=none";
+            out << " range=" << std::fixed << std::setprecision(1) << range;
+            TellTravelTrace(ai, requester, out.str());
+        }
+    }
+
+    std::string DescribeQuestCandidate(Player* bot, QuestRelationTravelDestination* destination,
+        WorldPosition const* position, const PlayerTravelInfo& travelInfo, const std::string& source)
+    {
+        std::ostringstream out;
+        Quest const* quest = destination ? sObjectMgr.GetQuestTemplate(destination->GetQuestId()) : nullptr;
+        WorldPosition const* closestPoint = destination ? destination->GetClosestPoint(bot) : nullptr;
+        const bool possible = destination && destination->IsPossible(travelInfo);
+        const bool active = destination && destination->IsActive(bot, travelInfo);
+        const bool inStarterCluster = position && IsDestinationInAllowedStarterCluster(bot, position);
+        std::string canTakeQuest = "n/a";
+
+        if (destination && destination->GetRelation() == 0 && quest)
+        {
+            if (closestPoint && closestPoint->getMapId() == bot->GetMapId())
+                canTakeQuest = FormatBool(bot->CanTakeQuest(quest, false));
+            else
+                canTakeQuest = "map-mismatch";
+        }
+
+        const int32 prevQuestId = quest ? quest->GetPrevQuestId() : 0;
+        std::string prevQuestState = "-";
+        if (prevQuestId)
+        {
+            const uint32 requiredQuestId = static_cast<uint32>(std::abs(prevQuestId));
+            prevQuestState = DescribeQuest(bot, requiredQuestId);
+        }
+
+        out << "starter_quest_diag " << source
+            << " entry=" << (destination ? destination->GetEntry() : 0)
+            << " title=" << (destination ? destination->GetTitle() : "<null>")
+            << " questId=" << (destination ? destination->GetQuestId() : 0)
+            << " relation=" << (destination ? destination->GetRelation() : 0)
+            << " active=" << FormatBool(active)
+            << " possible=" << FormatBool(possible)
+            << " canTakeQuest=" << canTakeQuest
+            << " inStarterCluster=" << FormatBool(inStarterCluster)
+            << " prevQuestId=" << prevQuestId
+            << " prevQuestState=" << prevQuestState;
+
+        if (position)
+            out << " distance=" << std::fixed << std::setprecision(1) << position->distance(bot);
+
+        return out.str();
+    }
+
+    void LogStarterQuestNoTargetDiagnostics(PlayerbotAI* ai, Player* requester, Player* bot,
+        PartitionedTravelList const& partitionedList)
+    {
+        if (!ai || !bot || !IsBotInStarterZone(bot))
+            return;
+
+        const PlayerTravelInfo travelInfo(bot);
+        LogStarterQuestState(ai, requester, bot, "no_target");
+
+        std::unordered_set<std::string> seenFetchedCandidates;
+        size_t fetchedCount = 0;
+        size_t fetchedOverflow = 0;
+        for (const auto& [partition, points] : partitionedList)
+        {
+            (void)partition;
+
+            for (const auto& [destination, position, distance] : points)
+            {
+                (void)distance;
+
+                QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(destination);
+                if (!questDestination || questDestination->GetRelation() != 0 || !position || !IsDestinationInAllowedStarterCluster(bot, position))
+                    continue;
+
+                const std::string key = std::to_string(questDestination->GetEntry()) + ":" + std::to_string(questDestination->GetQuestId());
+                if (!seenFetchedCandidates.insert(key).second)
+                    continue;
+
+                if (fetchedCount < 12)
+                {
+                    TellTravelTrace(ai, requester, DescribeQuestCandidate(bot, questDestination, position, travelInfo, "fetched_candidate"));
+                    ++fetchedCount;
+                }
+                else
+                {
+                    ++fetchedOverflow;
+                }
+            }
+        }
+
+        if (!fetchedCount)
+            TellTravelTrace(ai, requester, "starter_quest_diag fetched_candidate none");
+        else if (fetchedOverflow)
+            TellTravelTrace(ai, requester, "starter_quest_diag fetched_candidate overflow=" + std::to_string(fetchedOverflow));
+
+        DestinationList localQuestGivers = sTravelMgr.GetDestinations(travelInfo, (uint32)TravelDestinationPurpose::QuestGiver, {}, false, 0.0f);
+        std::vector<std::pair<float, QuestRelationTravelDestination*>> localCandidates;
+        std::unordered_set<std::string> seenLocalCandidates;
+        for (TravelDestination* destination : localQuestGivers)
+        {
+            QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(destination);
+            if (!questDestination || questDestination->GetRelation() != 0)
+                continue;
+
+            WorldPosition const* position = questDestination->GetClosestPoint(bot);
+            if (!position || !IsDestinationInAllowedStarterCluster(bot, position))
+                continue;
+
+            const std::string key = std::to_string(questDestination->GetEntry()) + ":" + std::to_string(questDestination->GetQuestId());
+            if (!seenLocalCandidates.insert(key).second)
+                continue;
+
+            localCandidates.push_back({ position->distance(bot), questDestination });
+        }
+
+        std::sort(localCandidates.begin(), localCandidates.end(), [](const auto& left, const auto& right)
+        {
+            return left.first < right.first;
+        });
+
+        if (localCandidates.empty())
+        {
+            TellTravelTrace(ai, requester, "starter_quest_diag local_candidate none");
+            return;
+        }
+
+        size_t loggedLocalCandidates = 0;
+        for (const auto& [distance, destination] : localCandidates)
+        {
+            if (loggedLocalCandidates >= 12)
+                break;
+
+            (void)distance;
+            TellTravelTrace(ai, requester,
+                DescribeQuestCandidate(bot, destination, destination->GetClosestPoint(bot), travelInfo, "local_candidate"));
+            ++loggedLocalCandidates;
+        }
+
+        if (localCandidates.size() > loggedLocalCandidates)
+            TellTravelTrace(ai, requester, "starter_quest_diag local_candidate overflow=" + std::to_string(localCandidates.size() - loggedLocalCandidates));
     }
 
     bool HasPendingTravelDestinations(FutureDestinations* futureDestinations)
@@ -872,6 +1087,8 @@ bool ChooseTravelTargetAction::Execute(Event& event)
     if (!SetBestTarget(requester, &newTarget, destinationList, true, relationMapPtr, questIdsPtr))
     {
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
+        if (futureTravelPurpose == "quest")
+            LogStarterQuestNoTargetDiagnostics(ai, requester, bot, destinationList);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
         return false;
     }
@@ -2445,6 +2662,9 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
     std::sort(questIds.begin(), questIds.end());
     questIds.erase(std::unique(questIds.begin(), questIds.end()), questIds.end());
+
+    LogStarterQuestState(ai, ai->GetMaster(), bot, "request");
+    LogStarterQuestFetches(ai, ai->GetMaster(), bot, destinationFetches);
 
     *futureDestinations = LaunchTravelDestinations([partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, questIds, relationMap, bot = bot]()
         {
