@@ -7,6 +7,7 @@
 #include "PathFinder.h"
 #include "playerbot/TravelMgr.h"
 #include <iomanip>
+#include <vector>
 
 using namespace ai;
 
@@ -175,6 +176,49 @@ bool MoveToTravelTargetAction::Execute(Event& event)
             movePosition = reachablePosition;
     }
 
+    bool usedPathStep = false;
+    if (location.getMapId() == bot->GetMapId())
+    {
+        std::vector<WorldPosition> path = location.getPathStepFrom(botLocation, bot, true);
+        if (!path.empty())
+        {
+            const float maxStepDistance = std::min(60.0f, sPlayerbotAIConfig.sightDistance);
+            WorldPosition selectedPathPoint = path.back();
+
+            for (const WorldPosition& pathPoint : path)
+            {
+                const float stepDistance = botLocation.distance(pathPoint);
+                if (stepDistance < sPlayerbotAIConfig.targetPosRecalcDistance)
+                    continue;
+
+                selectedPathPoint = pathPoint;
+                if (stepDistance >= maxStepDistance)
+                    break;
+            }
+
+            movePosition = selectedPathPoint;
+            usedPathStep = true;
+        }
+        else if (location.distance(bot) > 80.0f)
+        {
+            ai->TellDebug(ai->GetMaster(),
+                "[PBTRACE] move_to_travel no normal path dest=\"" + target->GetDestination()->GetTitle() +
+                "\" dist=" + std::to_string(static_cast<uint32>(location.distance(bot))) +
+                " pos_str=" + target->GetPosStr(),
+                "debug travel");
+            target->IncRetry(true);
+
+            if (target->IsMaxRetry(true))
+            {
+                ai->TellDebug(ai->GetMaster(), "The target is cooling down because we failed to find a normal path to it a few times in a row.", "debug travel");
+                target->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+                target->SetForced(false);
+            }
+
+            return false;
+        }
+    }
+
     if (movePosition.getMapId() == bot->GetMapId())
         movePosition.ClosestCorrectPoint(5.0f, 50.0f, bot->GetInstanceId());
 
@@ -213,6 +257,7 @@ bool MoveToTravelTargetAction::Execute(Event& event)
         "[PBTRACE] move_to_travel attempt dest=\"" + target->GetDestination()->GetTitle() +
         "\" map=" + std::to_string(static_cast<uint32>(mapId)) +
         " point={" + std::to_string(static_cast<int32>(x)) + "," + std::to_string(static_cast<int32>(y)) + "," + std::to_string(static_cast<int32>(z)) + "}" +
+        " path_step=" + std::string(usedPathStep ? "yes" : "no") +
         " chosen_dist=" + std::to_string(static_cast<uint32>(movePosition.distance(location))) +
         " dist=" + std::to_string(static_cast<uint32>(location.distance(bot))) +
         " retries=" + std::to_string(static_cast<uint32>(target->GetRetryCount(true))),
