@@ -58,7 +58,6 @@
 #include "LastSpellCastTimeValue.h"
 #include "CombatStartTimeValue.h"
 #include "ManaSaveLevelValue.h"
-#include "QuestPriorityValue.h"
 #include "LfgValues.h"
 #include "PvpValues.h"
 #include "EnemyHealerTargetValue.h"
@@ -332,8 +331,6 @@ namespace ai
             creators["can use item on"] = [](PlayerbotAI* ai) { return new CanUseItemOn(ai); };
             creators["quest reward"] = [](PlayerbotAI* ai) { return new QuestRewardValue(ai); };
             creators["has nearby quest taker"] = [](PlayerbotAI* ai) { return new HasNearbyQuestTakerValue(ai); };
-            creators["quest priority"] = [](PlayerbotAI* ai) { return new QuestPriorityValue(ai); };
-            creators["active quest priority list"] = [](PlayerbotAI* ai) { return new ActiveQuestPriorityListValue(ai); };
 
             creators["money needed for"] = [](PlayerbotAI* ai) { return new MoneyNeededForValue(ai); };
             creators["total money needed for"] = [](PlayerbotAI* ai) { return new TotalMoneyNeededForValue(ai); };
@@ -382,7 +379,6 @@ namespace ai
             creators["not"] = [](PlayerbotAI* ai) { return new NotValue(ai); };
             creators["gt32"] = [](PlayerbotAI* ai) { return new GT32Value(ai); };
             creators["manual bool"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai); };
-            creators["needs weapon skill"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai, false, "needs weapon skill"); };
             creators["manual int"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai); };
             creators["manual saved int"] = [](PlayerbotAI* ai) { return new IntManualSetSavedValue(ai); };
             creators["manual string"] = [](PlayerbotAI* ai) { return new StringManualSetValue(ai); };

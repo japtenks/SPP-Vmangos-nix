@@ -43,8 +43,6 @@ void BotSession::Reset(SessionState newState)
     startedAt = time(nullptr);
     pausedAt = 0;
     isPaused = false;
-    if (newState != SessionState::IDLE)
-        maintenanceBreakpointUntil = 0;
 }
 
 InterruptTier CommittedTask::GetInterruptTier() const

@@ -22,6 +22,8 @@ bool ChatHandler::HandleBotInfoCommand(char* a) { return RouteToPlayerbotMgr(thi
 bool ChatHandler::HandleBotStartCommand(char* a) { return RouteToPlayerbotMgr(this, "add", a); }
 bool ChatHandler::HandleBotStopCommand(char* a) { return RouteToPlayerbotMgr(this, "remove", a); }
 bool ChatHandler::HandleBotReloadCommand(char* a) { return RouteToPlayerbotMgr(this, "reload", a); }
+// Legacy uppercase PlayerBots command surface is retired in place pending removal.
+// The active vmangos playerbot port uses .bot and .rndbot through the lowercase playerbot managers above.
 bool ChatHandler::HandlePartyBotAddCommand(char*) { return false; }
 bool ChatHandler::HandlePartyBotRemoveCommand(char*) { return false; }
 bool ChatHandler::HandlePartyBotCloneCommand(char*) { return false; }

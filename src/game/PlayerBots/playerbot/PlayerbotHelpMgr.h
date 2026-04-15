@@ -54,6 +54,9 @@ class PlayerbotHelpMgr
         bool IsGenericSupported(PlayerbotAIAware* object);
         std::string GetObjectName(PlayerbotAIAware* object, std::string className);
         std::string GetObjectLink(PlayerbotAIAware* object, std::string className);
+        std::string GetObjectListLink(PlayerbotAIAware* object, std::string className);
+        bool ShouldListTrigger(Trigger* trigger);
+        bool ShouldListValue(UntypedValue* value);
 
         void LoadStrategies(std::string className, AiObjectContext* context);
         void LoadAllStrategies();

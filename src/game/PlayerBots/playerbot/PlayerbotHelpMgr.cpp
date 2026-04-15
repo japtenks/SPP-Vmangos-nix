@@ -115,6 +115,40 @@ std::string PlayerbotHelpMgr::GetObjectLink(PlayerbotAIAware* object, std::strin
     return "[h:" + prefix + "|" + object->getName() + "]";   
 }
 
+std::string PlayerbotHelpMgr::GetObjectListLink(PlayerbotAIAware* object, std::string className)
+{
+    std::string prefix = "unkown";
+    if (dynamic_cast<Strategy*>(object))
+        prefix = "strategy";
+    if (dynamic_cast<Trigger*>(object))
+        prefix = "trigger";
+    if (dynamic_cast<Action*>(object))
+        prefix = "action";
+    if (dynamic_cast<UntypedValue*>(object))
+        prefix = "value";
+
+    std::string label = GetObjectName(object, className);
+    if (prefix != "strategy")
+        label += " (" + prefix + ")";
+
+    if (className != "generic")
+        return "[h:" + prefix + ":" + GetObjectName(object, className) + "|" + label + "]";
+
+    return "[h:" + prefix + "|" + label + "]";
+}
+
+bool PlayerbotHelpMgr::ShouldListTrigger(Trigger* trigger)
+{
+    static const std::set<std::string> hiddenTriggers = { "often", "val" };
+    return hiddenTriggers.find(trigger->getName()) == hiddenTriggers.end();
+}
+
+bool PlayerbotHelpMgr::ShouldListValue(UntypedValue* value)
+{
+    // Values are primarily for introspection, so keep the public list to explicitly documented entries.
+    return value->GetHelpName() == value->getName();
+}
+
 void PlayerbotHelpMgr::LoadStrategies(std::string className, AiObjectContext* context)
 {
     ai->SetAiObjectContext(context);
@@ -293,7 +327,7 @@ void PlayerbotHelpMgr::GenerateStrategyHelp()
             std::string strategyName = strategy->getName();
             std::string linkName = GetObjectName(strategy, className);
 
-            stratLinks.push_back(GetObjectLink(strategy, className));
+            stratLinks.push_back(GetObjectListLink(strategy, className));
 
             std::string helpTemplate = botHelpText["template:strategy"].m_templateText;
 
@@ -399,7 +433,8 @@ void PlayerbotHelpMgr::GenerateTriggerHelp()
 
                     triggers.push_back(triggerName);
 
-                    trigLinks.push_back(GetObjectLink(trigger, className));
+                    if (ShouldListTrigger(trigger))
+                        trigLinks.push_back(GetObjectListLink(trigger, className));
 
                     std::string helpTemplate = botHelpText["template:trigger"].m_templateText;
 
@@ -520,7 +555,7 @@ void PlayerbotHelpMgr::GenerateActionHelp()
 
                         actions.push_back(ActionName);
 
-                        actionLinks.push_back(GetObjectLink(action, className));
+                        actionLinks.push_back(GetObjectListLink(action, className));
 
                         std::string helpTemplate = botHelpText["template:action"].m_templateText;
 
@@ -651,7 +686,8 @@ void PlayerbotHelpMgr::GenerateValueHelp()
             else
                 coverageMap["value"][valueName] = false;
 
-            valueLinks[valueType].push_back(GetObjectLink(value, className));
+            if (ShouldListValue(value))
+                valueLinks[valueType].push_back(GetObjectListLink(value, className));
 
             if (!usedVal.empty())
                 usedVal = "\nUsed values:\n" + usedVal;

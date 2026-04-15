@@ -76,7 +76,7 @@ namespace ai
 
         void GetSupportedTriggers(std::set<std::string>& triggers)
         {
-            return strategyContexts.GetSupportedKeys(triggers);
+            return triggerContexts.GetSupportedKeys(triggers);
         }
 
         void GetSupportedActions(std::set<std::string>& actions)
