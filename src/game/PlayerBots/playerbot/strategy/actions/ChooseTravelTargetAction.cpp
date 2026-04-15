@@ -113,6 +113,51 @@ namespace
         return IsStarterZoneForRace(bot->GetRace(), zoneId, areaId);
     }
 
+    StarterCluster GetDestinationStarterCluster(uint32 zoneId, uint32 areaId)
+    {
+        const uint32 id = zoneId ? zoneId : areaId;
+        switch (id)
+        {
+            case 12:
+            case 40:
+            case 1:
+            case 38:
+                return StarterCluster::AllianceEastern;
+            case 141:
+            case 148:
+                return StarterCluster::NightElf;
+            case 14:
+            case 17:
+                return StarterCluster::OrcTroll;
+            case 215:
+                return StarterCluster::Tauren;
+            case 85:
+            case 130:
+                return StarterCluster::Undead;
+            default:
+                return StarterCluster::None;
+        }
+    }
+
+    bool IsDestinationInAllowedStarterCluster(Player* bot, WorldPosition const* destination)
+    {
+        if (!bot || !destination)
+            return false;
+
+        uint32 zoneId = 0;
+        uint32 areaId = 0;
+        sTerrainMgr.GetZoneAndAreaId(zoneId, areaId, destination->getMapId(), destination->getX(), destination->getY(), destination->getZ());
+        if (IsStarterZoneForRace(bot->GetRace(), zoneId, areaId))
+            return true;
+
+        if (!IsStarterRepTraveler(bot))
+            return false;
+
+        const StarterCluster botCluster = GetStarterCluster(bot->GetRace(), bot->GetZoneId(), sServerFacade.GetAreaId(bot));
+        const StarterCluster destinationCluster = GetDestinationStarterCluster(zoneId, areaId);
+        return botCluster != StarterCluster::None && botCluster == destinationCluster;
+    }
+
     std::string FormatTravelPurpose(TravelDestinationPurpose purpose)
     {
         auto itr = TravelDestinationPurposeName.find(purpose);
@@ -605,7 +650,11 @@ namespace
         if (!followOnCount)
             return 0.0f;
 
-        return 0.20f * std::min<float>(2.0f, static_cast<float>(followOnCount));
+        float bonus = 0.20f * std::min<float>(2.0f, static_cast<float>(followOnCount));
+        if (IsBotInStarterZone(bot))
+            bonus *= 4.0f;
+
+        return bonus;
     }
 
     InterruptTier GetTravelTargetInterruptTier(const TravelTarget* target)
@@ -684,6 +733,58 @@ namespace
         cache[questId] = score;
         return score;
     }
+
+    uint32 GetDestinationQuestId(TravelDestination* destination)
+    {
+        if (QuestTravelDestination* questDestination = dynamic_cast<QuestTravelDestination*>(destination))
+            return questDestination->GetQuestId();
+
+        return 0;
+    }
+
+    float GetLocalQuestClusterScore(PlayerbotAI* ai, TravelDestination* destination, WorldPosition const* position)
+    {
+        if (!ai || !destination || !position || !IsQuestPurpose(destination->GetPurpose()))
+            return 0.0f;
+
+        Player* bot = ai->GetBot();
+        if (!bot)
+            return 0.0f;
+
+        float score = 0.0f;
+        const uint32 destinationQuestId = GetDestinationQuestId(destination);
+
+        TravelTarget* currentTarget = AI_VALUE(TravelTarget*, "travel target");
+        if (currentTarget && currentTarget->GetDestination())
+        {
+            const uint32 currentQuestId = GetDestinationQuestId(currentTarget->GetDestination());
+            if (destinationQuestId && currentQuestId && destinationQuestId == currentQuestId)
+                score += 35.0f;
+
+            if (currentTarget->GetPosition())
+            {
+                const float clusterDistance = currentTarget->GetPosition()->distance(*position);
+                if (clusterDistance <= 75.0f)
+                    score += 25.0f;
+                else if (clusterDistance <= 150.0f)
+                    score += 10.0f;
+            }
+        }
+
+        CommittedTask& committedTask = ai->GetCommittedTask();
+        if (committedTask.isValid && destinationQuestId && committedTask.questId == destinationQuestId)
+            score += 20.0f;
+
+        if (IsBotInStarterZone(bot))
+        {
+            if (IsDestinationInAllowedStarterCluster(bot, position))
+                score += 40.0f;
+            else
+                score -= 250.0f;
+        }
+
+        return score;
+    }
 }
 
 inline std::string GetTravelPurposeName(std::string purpose)
@@ -748,7 +849,27 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         newTarget.SetRelevance(targetRelevance);
     }
 
-    if (!SetBestTarget(requester, &newTarget, destinationList))
+    EntryQuestRelationMap relationMap;
+    std::vector<uint32> questIds;
+    EntryQuestRelationMap const* relationMapPtr = nullptr;
+    std::vector<uint32> const* questIdsPtr = nullptr;
+    if (futureTravelPurpose == "quest")
+    {
+        relationMap = AI_VALUE_SAFE(EntryQuestRelationMap, "entry quest relation");
+        QuestStatusMap& questStatusMap = bot->GetQuestStatusMap();
+        for (const auto& [questId, questStatus] : questStatusMap)
+        {
+            if (!questStatus.m_rewarded)
+                questIds.push_back(questId);
+        }
+
+        std::sort(questIds.begin(), questIds.end());
+        questIds.erase(std::unique(questIds.begin(), questIds.end()), questIds.end());
+        relationMapPtr = &relationMap;
+        questIdsPtr = &questIds;
+    }
+
+    if (!SetBestTarget(requester, &newTarget, destinationList, true, relationMapPtr, questIdsPtr))
     {
         SET_AI_VALUE2(bool, "no active travel destinations", futureTravelPurpose, true);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
@@ -1072,7 +1193,8 @@ inline std::string PrintPartion(uint32 sqPartition)
 }
 
 //Sets the target to the best destination.
-bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& partitionedList, bool onlyActive)
+bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& partitionedList, bool onlyActive,
+    EntryQuestRelationMap const* relationMap, std::vector<uint32> const* questIds)
 {
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
@@ -1090,14 +1212,26 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
         {
             TravelDestination* leftDestination = std::get<0>(left);
             TravelDestination* rightDestination = std::get<0>(right);
+            WorldPosition* leftPosition = std::get<1>(left);
+            WorldPosition* rightPosition = std::get<1>(right);
 
             const float leftSocialScore = GetSocialDestinationScore(bot, leftDestination);
             const float rightSocialScore = GetSocialDestinationScore(bot, rightDestination);
             if (leftSocialScore != rightSocialScore)
                 return leftSocialScore > rightSocialScore;
 
-            const float leftScore = GetQuestPriorityScore(ai, leftDestination, questPriorityCache);
-            const float rightScore = GetQuestPriorityScore(ai, rightDestination, questPriorityCache);
+            float leftScore = GetQuestPriorityScore(ai, leftDestination, questPriorityCache) +
+                GetLocalQuestClusterScore(ai, leftDestination, leftPosition);
+            float rightScore = GetQuestPriorityScore(ai, rightDestination, questPriorityCache) +
+                GetLocalQuestClusterScore(ai, rightDestination, rightPosition);
+
+            if (relationMap && questIds)
+            {
+                leftScore += GetQuestHubBonus(bot, leftDestination, *relationMap, *questIds) +
+                    GetQuestFollowOnBonus(bot, leftDestination, *relationMap);
+                rightScore += GetQuestHubBonus(bot, rightDestination, *relationMap, *questIds) +
+                    GetQuestFollowOnBonus(bot, rightDestination, *relationMap);
+            }
 
             if (leftScore == rightScore)
                 return std::get<2>(left) < std::get<2>(right);
@@ -1141,9 +1275,17 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         (questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver ||
                          questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestTaker))
                     {
-                        allowInactiveQuestContinuation = true;
-                        ai->TellDebug(requester, "Allowing distant quest continuation target despite inactive check: " +
-                            destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                        if (IsBotInStarterZone(bot) && !IsDestinationInAllowedStarterCluster(bot, position))
+                        {
+                            ai->TellDebug(requester, "Blocking distant quest continuation outside starter cluster: " +
+                                destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                        }
+                        else
+                        {
+                            allowInactiveQuestContinuation = true;
+                            ai->TellDebug(requester, "Allowing distant quest continuation target despite inactive check: " +
+                                destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                        }
                     }
                 }
             }
