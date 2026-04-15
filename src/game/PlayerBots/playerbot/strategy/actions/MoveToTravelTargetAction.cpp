@@ -179,7 +179,11 @@ bool MoveToTravelTargetAction::Execute(Event& event)
     bool usedPathStep = false;
     if (location.getMapId() == bot->GetMapId())
     {
-        std::vector<WorldPosition> path = location.getPathStepFrom(botLocation, bot, true);
+        const bool botInWater = botLocation.isInWater() || botLocation.isUnderWater();
+        const bool targetInWater = location.isInWater() || location.isUnderWater();
+        const bool waterTransition = (botInWater != targetInWater) || (botLocation.isUnderWater() != location.isUnderWater());
+
+        std::vector<WorldPosition> path = location.getPathStepFrom(botLocation, bot, !waterTransition);
         if (!path.empty())
         {
             const float maxStepDistance = std::min(60.0f, sPlayerbotAIConfig.sightDistance);
@@ -199,7 +203,7 @@ bool MoveToTravelTargetAction::Execute(Event& event)
             movePosition = selectedPathPoint;
             usedPathStep = true;
         }
-        else if (location.distance(bot) > 80.0f)
+        else if (!waterTransition && location.distance(bot) > 80.0f)
         {
             ai->TellDebug(ai->GetMaster(),
                 "[PBTRACE] move_to_travel no normal path dest=\"" + target->GetDestination()->GetTitle() +
