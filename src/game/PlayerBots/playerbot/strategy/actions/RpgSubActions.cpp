@@ -16,6 +16,7 @@
 #include "SayAction.h"
 #include "playerbot/PlayerbotLLMInterface.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include <iomanip>
 
 
 using namespace ai;
@@ -30,6 +31,50 @@ namespace
             return;
 
         ai->TellDebug(requester ? requester : ai->GetMaster(), std::string(kDecisionTracePrefix) + " " + text, strategy);
+    }
+
+    void TraceQuestStartDebug(PlayerbotAI* ai, RpgHelper* rpg, const std::string& stage, bool possible, bool inRange)
+    {
+        if (!ai || !rpg)
+            return;
+
+        Player* bot = ai->GetBot();
+        AiObjectContext* context = ai->GetAiObjectContext();
+        GuidPosition guidP = rpg->guidP();
+        WorldObject* worldObject = guidP ? guidP.GetWorldObject(bot->GetInstanceId()) : nullptr;
+        float distance = guidP ? context->GetValue<float>("distance", "rpg target")->Get() : -1.0f;
+
+        int32 questgiverEntry = 0;
+        if (guidP)
+            questgiverEntry = guidP.IsGameObject() ? -1 * static_cast<int32>(guidP.GetEntry()) : static_cast<int32>(guidP.GetEntry());
+
+        std::string qualifier = std::to_string(questgiverEntry);
+        const uint32 dialogStatus = questgiverEntry ? context->GetValue<uint32>("dialog status", qualifier)->Get() : DIALOG_STATUS_NONE;
+        const bool canAccept = questgiverEntry ? context->GetValue<bool>("can accept quest npc", qualifier)->Get() : false;
+        const bool canAcceptLow = questgiverEntry ? context->GetValue<bool>("can accept quest low level npc", qualifier)->Get() : false;
+        const bool canInteract = worldObject && bot->CanInteractWithQuestGiver(worldObject);
+
+        std::ostringstream out;
+        out << "rpg_start_debug"
+            << " stage=" << stage
+            << " target=" << (worldObject ? ChatHelper::formatWorldobject(worldObject) : "none")
+            << " guid=" << (guidP ? guidP.GetString() : "none")
+            << " entry=" << questgiverEntry
+            << " possible=" << (possible ? "yes" : "no")
+            << " in_range=" << (inRange ? "yes" : "no")
+            << " dist=";
+
+        if (distance >= 0.0f)
+            out << std::fixed << std::setprecision(1) << distance;
+        else
+            out << "n/a";
+
+        out << " can_interact=" << (canInteract ? "yes" : "no")
+            << " can_accept=" << (canAccept ? "yes" : "no")
+            << " can_accept_low=" << (canAcceptLow ? "yes" : "no")
+            << " dialog=" << dialogStatus;
+
+        TellRpgTrace(ai, ai->GetMaster(), out.str());
     }
 }
 
@@ -169,6 +214,52 @@ bool RpgCancelAction::Execute(Event& event)
     
     return true;
 };
+
+bool RpgStartQuestAction::isPossible()
+{
+    bool possible = RpgSubAction::isPossible();
+    if (!possible)
+        TraceQuestStartDebug(ai, rpg.get(), "possible", false, false);
+
+    return possible;
+}
+
+bool RpgStartQuestAction::isUseful()
+{
+    bool possible = RpgSubAction::isPossible();
+    if (!possible)
+    {
+        TraceQuestStartDebug(ai, rpg.get(), "possible", false, false);
+        return false;
+    }
+
+    bool inRange = rpg->InRange();
+    if (!inRange)
+    {
+        TraceQuestStartDebug(ai, rpg.get(), "range", true, false);
+        return false;
+    }
+
+    WorldObject* worldObject = rpg->guidP().GetWorldObject(bot->GetInstanceId());
+    if (!worldObject || !bot->CanInteractWithQuestGiver(worldObject))
+    {
+        TraceQuestStartDebug(ai, rpg.get(), "interact", true, true);
+        return false;
+    }
+
+    int32 questgiverEntry = rpg->guidP().IsGameObject() ? -1 * static_cast<int32>(rpg->guidP().GetEntry()) : static_cast<int32>(rpg->guidP().GetEntry());
+    std::string qualifier = std::to_string(questgiverEntry);
+    bool canAccept = AI_VALUE2(bool, "can accept quest npc", qualifier);
+    bool canAcceptLow = AI_VALUE2(bool, "can accept quest low level npc", qualifier);
+
+    if (!canAccept && !canAcceptLow)
+    {
+        TraceQuestStartDebug(ai, rpg.get(), "accept", true, true);
+        return false;
+    }
+
+    return true;
+}
 
 bool RpgTaxiAction::Execute(Event& event)
 {

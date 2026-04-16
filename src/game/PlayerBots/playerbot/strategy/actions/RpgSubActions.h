@@ -132,6 +132,8 @@ namespace ai
     {
     public:
         RpgStartQuestAction(PlayerbotAI* ai, std::string name = "rpg start quest") : RpgSubAction(ai, name) {}
+        virtual bool isPossible() override;
+        virtual bool isUseful() override;
         virtual bool Execute(Event& event) override { rpg->BeforeExecute();  bool doAction = ai->DoSpecificAction(ActionName(), ActionEvent(event), true); rpg->AfterExecute(doAction, true, ""); DoDelay(); return doAction; }
 
         virtual std::string GetRpgActionName() const override { return "starting a quest at"; };
