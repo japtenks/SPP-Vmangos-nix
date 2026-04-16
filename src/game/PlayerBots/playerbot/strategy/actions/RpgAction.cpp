@@ -10,37 +10,6 @@
 
 using namespace ai;
 
-namespace
-{
-    bool IsQuestTravelWorkTarget(TravelTarget* travelTarget, GuidPosition const& rpgTarget)
-    {
-        if (!travelTarget || travelTarget->GetStatus() != TravelStatus::TRAVEL_STATUS_WORK || !travelTarget->GetDestination() || !rpgTarget)
-            return false;
-
-        QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(travelTarget->GetDestination());
-        if (!questDestination)
-            return false;
-
-        const int32 rpgEntry = rpgTarget.IsCreature() ? static_cast<int32>(rpgTarget.GetEntry()) : -1 * static_cast<int32>(rpgTarget.GetEntry());
-        return rpgEntry == travelTarget->GetEntry();
-    }
-
-    uint8 GetPreferredRpgServicePriority(const std::string& actionName)
-    {
-        if (actionName == "rpg end quest") return 1;
-        if (actionName == "rpg start quest") return 2;
-        if (actionName == "rpg train") return 3;
-        if (actionName == "rpg repair") return 4;
-        if (actionName == "rpg sell") return 5;
-        if (actionName == "rpg buy") return 6;
-        if (actionName == "rpg get mail") return 7;
-        if (actionName == "rpg ah sell") return 8;
-        if (actionName == "rpg ah buy") return 9;
-        if (actionName == "rpg buy petition") return 10;
-        return 0;
-    }
-}
-
 bool RpgAction::Execute(Event& event)
 {    
     GuidPosition guidP = AI_VALUE(GuidPosition, "rpg target");
@@ -137,56 +106,6 @@ bool RpgAction::SetNextRpgAction()
 
     if (actions.empty())
         return false;
-
-    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
-    GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target");
-    const bool inRangeServiceTarget = rpgTarget && AI_VALUE2(float, "distance", "rpg target") <= INTERACTION_DISTANCE * 1.5f;
-    const bool questWorkTarget = IsQuestTravelWorkTarget(travelTarget, rpgTarget);
-
-    if (inRangeServiceTarget)
-    {
-        Action* preferredAction = nullptr;
-        for (Action* action : actions)
-        {
-            const uint8 priority = GetPreferredRpgServicePriority(action->getName());
-            if (!priority)
-                continue;
-
-            if (!preferredAction || priority < GetPreferredRpgServicePriority(preferredAction->getName()))
-                preferredAction = action;
-        }
-
-        if (!preferredAction && questWorkTarget)
-        {
-            for (Action* action : actions)
-            {
-                if (action->getName() == "rpg end quest")
-                {
-                    preferredAction = action;
-                    break;
-                }
-
-                if (!preferredAction && action->getName() == "rpg start quest")
-                    preferredAction = action;
-            }
-        }
-
-        if (preferredAction)
-        {
-            if ((ai->HasStrategy("debug", BotState::BOT_STATE_NON_COMBAT) || ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT)) &&
-                rpgTarget.GetWorldObject(bot->GetInstanceId()))
-            {
-                std::ostringstream out;
-                out << "do: ";
-                out << chat->formatWorldobject(rpgTarget.GetWorldObject(bot->GetInstanceId()));
-                out << " " << preferredAction->getName() << " [service fast path]";
-                ai->TellPlayerNoFacing(GetMaster(), out);
-            }
-
-            SET_AI_VALUE(std::string, "next rpg action", preferredAction->getName());
-            return true;
-        }
-    }
 
     if (ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT))
     {
