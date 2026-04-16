@@ -466,7 +466,7 @@ namespace
 
     bool IsNearbyQuestDistance(float distance)
     {
-        return distance <= std::max(90.0f, sPlayerbotAIConfig.rpgDistance * 2.5f);
+        return distance <= 80.0f;
     }
 
     bool IsSameZoneDestination(Player* bot, WorldPosition const* position)
