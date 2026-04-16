@@ -17,6 +17,81 @@ using namespace MaNGOS;
 
 namespace
 {
+    bool ClaimNearbyTravelWorkTarget(PlayerbotAI* ai, TravelTarget* target)
+    {
+        if (!ai || !target || !target->GetDestination())
+            return false;
+
+        Player* bot = ai->GetBot();
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!bot || !context)
+            return false;
+
+        const int32 targetEntry = target->GetEntry();
+        if (!targetEntry)
+            return false;
+
+        const float maxClaimDistance = targetEntry < 0 ? INTERACTION_DISTANCE * 6.0f : 30.0f;
+
+        auto claimGuid = [&](ObjectGuid guid, WorldObject* worldObject) -> bool
+        {
+            if (!guid || !worldObject)
+                return false;
+
+            const float distance = sServerFacade.GetDistance2d(bot, worldObject);
+            if (distance > maxClaimDistance)
+                return false;
+
+            context->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(guid, bot->GetMapId(), bot->GetInstanceId()));
+            context->GetValue<std::set<ObjectGuid>&>("ignore rpg target")->Get().erase(guid);
+            context->GetValue<std::string>("next rpg action")->Set("rpg");
+
+            ai->TellDebug(ai->GetMaster(),
+                "[PBTRACE] travel work claimed rpg target entry=" + std::to_string(worldObject->GetEntry()) +
+                " dist=" + std::to_string(static_cast<uint32>(distance)) +
+                " dest=\"" + target->GetDestination()->GetTitle() + "\"",
+                "debug travel");
+            return true;
+        };
+
+        if (targetEntry > 0)
+        {
+            std::list<ObjectGuid> possibleTargets = context->GetValue<std::list<ObjectGuid>>("possible rpg targets")->Get();
+            for (const ObjectGuid& guid : possibleTargets)
+            {
+                if (!guid.IsCreature() || guid.GetEntry() != static_cast<uint32>(targetEntry))
+                    continue;
+
+                if (Creature* creature = ai->GetCreature(guid))
+                {
+                    if (claimGuid(guid, creature))
+                        return true;
+                }
+            }
+        }
+        else
+        {
+            const uint32 objectEntry = static_cast<uint32>(-targetEntry);
+            std::list<ObjectGuid> possibleObjects = bot->GetMap()->IsDungeon() ?
+                context->GetValue<std::list<ObjectGuid>>("nearest game objects")->Get() :
+                context->GetValue<std::list<ObjectGuid>>("nearest game objects no los")->Get();
+
+            for (const ObjectGuid& guid : possibleObjects)
+            {
+                if (!guid.IsGameObject() || guid.GetEntry() != objectEntry)
+                    continue;
+
+                if (GameObject* gameObject = ai->GetGameObject(guid))
+                {
+                    if (claimGuid(guid, gameObject))
+                        return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     uint8 GetStarterZoneThreshold(uint32 zoneId, uint32 areaId)
     {
         const uint32 id = zoneId ? zoneId : areaId;
@@ -1243,6 +1318,7 @@ void TravelTarget::CheckStatus()
 
             ai->TellDebug(ai->GetMaster(), "The target is starting to work because the destination has been reached.", "debug travel");
             SetStatus(TravelStatus::TRAVEL_STATUS_WORK);
+            ClaimNearbyTravelWorkTarget(ai, this);
             return;
         }
         else if(IsForced()) return; //While traveling do not go into cooldown
