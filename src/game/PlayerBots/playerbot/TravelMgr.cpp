@@ -1143,6 +1143,13 @@ void TravelTarget::SetStatus(TravelStatus status) {
         statusTime = tDestination->GetCooldownDelay();
     default: break;
     }
+
+    RESET_AI_VALUE(bool, "travel target active");
+    RESET_AI_VALUE(bool, "travel target traveling");
+    RESET_AI_VALUE(bool, "travel target working");
+
+    if (m_status == TravelStatus::TRAVEL_STATUS_WORK)
+        RESET_AI_VALUE(WorldPosition, "current position");
 }
 
 bool TravelTarget::IsDestinationActive()

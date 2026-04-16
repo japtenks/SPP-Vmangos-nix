@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/Trigger.h"
+#include "playerbot/TravelMgr.h"
 #include "Maps/MoveMap.h"
 
 namespace ai
@@ -34,6 +35,25 @@ namespace ai
             {
                 RESET_AI_VALUE(WorldPosition, "current position");
                 return false;
+            }
+
+            TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+            if (travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK && travelTarget->GetDestination())
+            {
+                TravelDestinationPurpose purpose = travelTarget->GetDestination()->GetPurpose();
+                if (purpose == TravelDestinationPurpose::QuestGiver || purpose == TravelDestinationPurpose::QuestTaker)
+                {
+                    bool questServiceReached = travelTarget->GetDestination()->IsIn(bot);
+                    GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target");
+                    if (!questServiceReached && rpgTarget && rpgTarget.GetEntry() == travelTarget->GetEntry())
+                        questServiceReached = AI_VALUE2(float, "distance", "rpg target") <= INTERACTION_DISTANCE * 2.0f;
+
+                    if (questServiceReached)
+                    {
+                        RESET_AI_VALUE(WorldPosition, "current position");
+                        return false;
+                    }
+                }
             }
 
             WorldPosition botPos(bot);
