@@ -380,6 +380,8 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
 bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInfo& info) const {
     PlayerbotAI* ai = bot->GetPlayerbotAI();
     AiObjectContext* context = ai->GetAiObjectContext();
+    const WorldPosition& botPosition = info.GetPosition();
+    WorldPosition const* closestPoint = GetClosestPoint(botPosition);
 
     if(!IsPossible(info))
         return false;
@@ -388,20 +390,22 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
 
     if (IsBotInStarterZone(bot))
     {
-        WorldPosition const* closestPoint = GetClosestPoint(bot);
         if (!closestPoint || closestPoint->getMapId() != bot->GetMapId() || !IsDestinationInBotsStarterZone(bot, closestPoint))
             return false;
     }
 
     if (GetRelation() == 0)
     {
-        if (!bot->GetMap()->IsContinent() && (GetClosestPoint(bot)->getMapId() != bot->GetMapId())) //This gives issues for bot->CanTakeQuest so stop here.
+        const MapEntry* botMapEntry = sMapStorage.LookupEntry<MapEntry>(botPosition.getMapId());
+        if (!closestPoint)
+            return false;
+
+        if (botMapEntry && !botMapEntry->IsContinent() && (closestPoint->getMapId() != botPosition.getMapId())) //This gives issues for bot->CanTakeQuest so stop here.
             return false;
 
         if (IsBotInStarterZone(bot))
         {
             const Quest* quest = GetQuestTemplate();
-            WorldPosition const* closestPoint = GetClosestPoint(bot);
             if (quest && closestPoint && closestPoint->getMapId() == bot->GetMapId() &&
                 IsDestinationInBotsStarterZone(bot, closestPoint) &&
                 bot->CanTakeQuest(quest, false))
