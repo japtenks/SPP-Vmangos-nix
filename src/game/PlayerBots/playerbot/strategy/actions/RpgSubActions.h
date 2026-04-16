@@ -5,6 +5,7 @@
 #include "MovementActions.h"
 #include "ChooseRpgTargetAction.h"
 #include "UseItemAction.h"
+#include "playerbot/TravelMgr.h"
 #include "playerbot/strategy/values/LastMovementValue.h"
 #include "SayAction.h"
 
@@ -52,6 +53,32 @@ namespace ai
         virtual std::string GetRpgActionName() const { return "generic rpg action"; };
     protected:
         void DoDelay(){ SetDuration(ai->GetAIInternalUpdateDelay()); }
+        bool HasPendingQuestService() const
+        {
+            TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+            GuidPosition guidP = rpg->guidP();
+            if (!travelTarget || !travelTarget->GetDestination() || !guidP || travelTarget->GetStatus() != TravelStatus::TRAVEL_STATUS_WORK)
+                return false;
+
+            TravelDestinationPurpose purpose = travelTarget->GetDestination()->GetPurpose();
+            if (purpose != TravelDestinationPurpose::QuestGiver && purpose != TravelDestinationPurpose::QuestTaker)
+                return false;
+
+            const int32 entry = guidP.IsCreature() ? static_cast<int32>(guidP.GetEntry()) : -1 * static_cast<int32>(guidP.GetEntry());
+            if (entry != travelTarget->GetEntry())
+                return false;
+
+            const std::string qualifier = std::to_string(entry);
+            return AI_VALUE2(bool, "can turn in quest npc", qualifier) ||
+                AI_VALUE2(bool, "can accept quest npc", qualifier) ||
+                AI_VALUE2(bool, "can accept quest low level npc", qualifier);
+        }
+
+        bool CanInteractWithQuestServiceTarget() const
+        {
+            WorldObject* worldObject = rpg->guidP().GetWorldObject(bot->GetInstanceId());
+            return worldObject && bot->CanInteractWithQuestGiver(worldObject);
+        }
         virtual std::string ActionName() { return "none"; }
         virtual Event ActionEvent(Event event) { return event; }
     };        
@@ -61,7 +88,7 @@ namespace ai
     public:
         RpgStayAction(PlayerbotAI* ai, std::string name = "rpg stay") : RpgSubAction(ai, name) {}
 
-        //virtual bool isUseful() override { return rpg->InRange() && !ai->HasRealPlayerMaster(); }
+        virtual bool isUseful() override { return RpgSubAction::isUseful() && !HasPendingQuestService(); }
 
         virtual std::string GetRpgActionName() const override { return "idling near"; };
 
@@ -73,7 +100,7 @@ namespace ai
     public:
         RpgWorkAction(PlayerbotAI* ai, std::string name = "rpg work") : RpgSubAction(ai, name ) {}
 
-        //virtual bool isUseful() override { return rpg->InRange() && !ai->HasRealPlayerMaster(); }
+        virtual bool isUseful() override { return RpgSubAction::isUseful() && !HasPendingQuestService(); }
 
         virtual std::string GetRpgActionName() const override { return "working next to"; };
 
@@ -87,7 +114,7 @@ namespace ai
 
        virtual std::string GetRpgActionName() const override { return "chatting with"; };
 
-        //virtual bool isUseful() override { return rpg->InRange() && !ai->HasRealPlayerMaster(); }
+        virtual bool isUseful() override { return RpgSubAction::isUseful() && !HasPendingQuestService(); }
 
         virtual bool Execute(Event& event) override;
     };
@@ -97,7 +124,7 @@ namespace ai
     public:
         RpgCancelAction(PlayerbotAI* ai, std::string name = "rpg cancel") : RpgSubAction(ai, name) {}
 
-        virtual bool isUseful() override {return rpg->InRange();}
+        virtual bool isUseful() override { return RpgSubAction::isUseful() && !HasPendingQuestService(); }
 
         virtual std::string GetRpgActionName() const override { return "leaving"; };
 
@@ -132,6 +159,7 @@ namespace ai
     {
     public:
         RpgStartQuestAction(PlayerbotAI* ai, std::string name = "rpg start quest") : RpgSubAction(ai, name) {}
+        virtual bool isUseful() override { return HasPendingQuestService() ? CanInteractWithQuestServiceTarget() : RpgSubAction::isUseful(); }
         virtual bool Execute(Event& event) override { rpg->BeforeExecute();  bool doAction = ai->DoSpecificAction(ActionName(), ActionEvent(event), true); rpg->AfterExecute(doAction, true, ""); DoDelay(); return doAction; }
 
         virtual std::string GetRpgActionName() const override { return "starting a quest at"; };
@@ -144,6 +172,7 @@ namespace ai
     {
     public:
         RpgEndQuestAction(PlayerbotAI* ai, std::string name = "rpg end quest") : RpgStartQuestAction(ai, name) {}
+        virtual bool isUseful() override { return HasPendingQuestService() ? CanInteractWithQuestServiceTarget() : RpgStartQuestAction::isUseful(); }
 
         virtual std::string GetRpgActionName() const override { return "handing in a quest at"; };
     private:
