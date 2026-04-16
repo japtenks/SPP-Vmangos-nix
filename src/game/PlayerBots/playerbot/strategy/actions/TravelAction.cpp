@@ -41,17 +41,7 @@ bool TravelAction::isUseful()
 
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
     if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK)
-    {
-        TravelDestination* destination = target->GetDestination();
-        if (destination)
-        {
-            TravelDestinationPurpose purpose = destination->GetPurpose();
-            if (purpose == TravelDestinationPurpose::QuestGiver || purpose == TravelDestinationPurpose::QuestTaker)
-                return false;
-        }
-
         return true;
-    }
     
     if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_COOLDOWN)
         return true;

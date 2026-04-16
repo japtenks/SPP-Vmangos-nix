@@ -377,6 +377,9 @@ bool MoveToTravelTargetAction::isUseful()
     if (!ai->AllowActivity(TRAVEL_ACTIVITY))
         return false;
 
+    if (!AI_VALUE(bool, "travel target traveling"))
+        return false;
+
     if (bot->IsTaxiFlying())
         return false;
 
@@ -393,13 +396,6 @@ bool MoveToTravelTargetAction::isUseful()
         return false;
 
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
-    TravelStatus travelStatus = travelTarget->GetStatus();
-
-    if (travelStatus != TravelStatus::TRAVEL_STATUS_READY && travelStatus != TravelStatus::TRAVEL_STATUS_TRAVEL)
-        return false;
-
-    if (!AI_VALUE(bool, "travel target traveling"))
-        return false;
 
     if (ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) || ai->HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT))
     {
