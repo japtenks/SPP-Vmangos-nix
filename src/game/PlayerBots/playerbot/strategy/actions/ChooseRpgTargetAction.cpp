@@ -143,6 +143,43 @@ namespace
         return GetSocialTargetBreakdown(ai, guidP).finalBonus;
     }
 
+    bool HasQuestInteraction(PlayerbotAI* ai, int32 entry)
+    {
+        if (!ai || !entry)
+            return false;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return false;
+
+        const std::string qualifier = std::to_string(entry);
+        return context->GetValue<bool>("can turn in quest npc", qualifier)->Get() ||
+            context->GetValue<bool>("can accept quest npc", qualifier)->Get() ||
+            context->GetValue<bool>("can accept quest low level npc", qualifier)->Get();
+    }
+
+    bool IsQuestInteractionTarget(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        if (!guidP || (!guidP.IsCreature() && !guidP.IsGameObject()))
+            return false;
+
+        const int32 entry = guidP.IsCreature() ? guidP.GetEntry() : -1 * static_cast<int32>(guidP.GetEntry());
+        return HasQuestInteraction(ai, entry);
+    }
+
+    bool IsTravelQuestNpc(TravelTarget* travelTarget, GuidPosition const& guidP)
+    {
+        if (!travelTarget || !travelTarget->GetDestination() || !guidP)
+            return false;
+
+        QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(travelTarget->GetDestination());
+        if (!questDestination)
+            return false;
+
+        const int32 entry = guidP.IsCreature() ? guidP.GetEntry() : -1 * static_cast<int32>(guidP.GetEntry());
+        return entry == travelTarget->GetEntry();
+    }
+
     std::string FormatSocialTargetBreakdown(PlayerbotAI* ai, GuidPosition const& guidP)
     {
         SocialTargetBreakdown breakdown = GetSocialTargetBreakdown(ai, guidP);
@@ -206,6 +243,7 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
 {
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     focusQuestTravelList focusList = AI_VALUE(focusQuestTravelList, "focus travel target");
+    GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
 
     GuidPosition masterRpgTarget;
     if (requester && ai->IsSafe(requester) && requester->GetPlayerbotAI())
@@ -362,6 +400,8 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
         //For all rpg actions that are triggered/possible for this target get the highest relevance.
         float relevance = getMaxRelevance(guidP);
         relevance += GetSocialTargetBonus(ai, guidP);
+        const bool questInteractionTarget = IsQuestInteractionTarget(ai, guidP);
+        const bool questTravelNpc = IsTravelQuestNpc(travelTarget, guidP);
 
         //If this rpg target is our travel target increase the relevance by 50% to make it more likely to be picked.
         if (isTravelTarget)
@@ -370,6 +410,17 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
                 relevance *= 1.5f;
             else
                 relevance *= 10.0f;
+        }
+
+        if (questInteractionTarget)
+        {
+            relevance = std::max(relevance, 180.0f);
+
+            if (questTravelNpc)
+                relevance *= focusList.empty() ? 6.0f : 15.0f;
+
+            if (currentRpgTarget && currentRpgTarget == guidP)
+                relevance *= 3.0f;
         }
 
         //If we already had a different target with a relevance above 1 and this only has 1 (trivial) skip this target.
@@ -570,6 +621,14 @@ bool ChooseRpgTargetAction::Execute(Event& event)
         RESET_AI_VALUE(std::set<ObjectGuid>&,"ignore rpg target");
         RESET_AI_VALUE(GuidPosition, "rpg target");
         return false;
+    }
+
+    GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
+    if (currentRpgTarget && targets.find(currentRpgTarget) != targets.end() && IsQuestInteractionTarget(ai, currentRpgTarget))
+    {
+        SET_AI_VALUE(GuidPosition, "rpg target", currentRpgTarget);
+        AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").clear();
+        return true;
     }
 
     //Report the list of potential targets and their relevance and reason for interaction.

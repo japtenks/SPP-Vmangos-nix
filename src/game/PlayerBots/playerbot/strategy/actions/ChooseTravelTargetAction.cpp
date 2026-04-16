@@ -265,25 +265,6 @@ namespace
         TellTravelTrace(ai, requester, "starter_quest_diag " + label + " active_quests=" + Qualified::MultiQualify(activeQuests, " | "));
     }
 
-    void LogStarterQuestFetches(PlayerbotAI* ai, Player* requester, Player* bot,
-        std::vector<std::tuple<uint32, int32, float>> const& destinationFetches)
-    {
-        if (!ai || !bot || !IsBotInStarterZone(bot))
-            return;
-
-        for (const auto& [purpose, questId, range] : destinationFetches)
-        {
-            std::ostringstream out;
-            out << "starter_quest_diag request_fetch purpose=" << purpose;
-            if (questId > 0)
-                out << " quest=" << DescribeQuest(bot, static_cast<uint32>(questId));
-            else
-                out << " quest=none";
-            out << " range=" << std::fixed << std::setprecision(1) << range;
-            TellTravelTrace(ai, requester, out.str());
-        }
-    }
-
     std::string DescribeQuestCandidate(Player* bot, QuestRelationTravelDestination* destination,
         WorldPosition const* position, const PlayerTravelInfo& travelInfo, const std::string& source)
     {
@@ -419,6 +400,325 @@ namespace
 
         if (localCandidates.size() > loggedLocalCandidates)
             TellTravelTrace(ai, requester, "starter_quest_diag local_candidate overflow=" + std::to_string(localCandidates.size() - loggedLocalCandidates));
+    }
+
+    enum class QuestIntentKind : uint8
+    {
+        None = 0,
+        BroadQuestGiver,
+        BlockedRemoteTurnIn,
+        RemoteQuestTaker,
+        RemoteObjective,
+        ClosestQuestFallback,
+        SameZoneQuestGiverContinuation,
+        LocalObjective,
+        StarterLocalPriority,
+        NearbyQuestGiver,
+        NearbyQuestTaker,
+        LevelOneClosestQuest
+    };
+
+    struct QuestIntentFetch
+    {
+        QuestIntentKind kind = QuestIntentKind::None;
+        uint32 purpose = 0;
+        int32 questId = 0;
+        float range = 0.0f;
+    };
+
+    struct QuestIntentContext
+    {
+        bool starterOrNewBot = false;
+        bool levelOneNoQuest = false;
+        bool hasUsableActiveQuestWork = false;
+        bool hasUsableLocalQuestWork = false;
+    };
+
+    bool HasQuestIntent(Player* bot);
+    float GetQuestHubBonus(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap, std::vector<uint32> const& questIds);
+    float GetQuestFollowOnBonus(Player* bot, TravelDestination* destination, EntryQuestRelationMap const& relationMap);
+    float GetLocalQuestClusterScore(PlayerbotAI* ai, TravelDestination* destination, WorldPosition const* position);
+    float GetQuestPriorityScore(PlayerbotAI* ai, TravelDestination* destination, std::unordered_map<uint32, float>& cache);
+
+    std::string FormatQuestIntentKind(QuestIntentKind kind)
+    {
+        switch (kind)
+        {
+            case QuestIntentKind::LevelOneClosestQuest: return "level_one_closest_quest";
+            case QuestIntentKind::NearbyQuestTaker: return "nearby_quest_taker";
+            case QuestIntentKind::NearbyQuestGiver: return "nearby_quest_giver";
+            case QuestIntentKind::StarterLocalPriority: return "starter_local_priority";
+            case QuestIntentKind::LocalObjective: return "local_objective";
+            case QuestIntentKind::SameZoneQuestGiverContinuation: return "same_zone_local_questgiver";
+            case QuestIntentKind::ClosestQuestFallback: return "closest_acceptable_quest";
+            case QuestIntentKind::RemoteObjective: return "remote_objective";
+            case QuestIntentKind::RemoteQuestTaker: return "remote_quest_taker";
+            case QuestIntentKind::BlockedRemoteTurnIn: return "blocked_remote_turnin";
+            case QuestIntentKind::BroadQuestGiver: return "broad_questgiver";
+            default: return "none";
+        }
+    }
+
+    bool IsStarterOrNewQuestBot(Player* bot)
+    {
+        return bot && (IsBotInStarterZone(bot) || bot->GetLevel() <= 10);
+    }
+
+    bool IsNearbyQuestDistance(float distance)
+    {
+        return distance <= std::max(90.0f, sPlayerbotAIConfig.rpgDistance * 2.5f);
+    }
+
+    bool IsSameZoneDestination(Player* bot, WorldPosition const* position)
+    {
+        if (!bot || !position || position->getMapId() != bot->GetMapId())
+            return false;
+
+        uint32 botZoneId = 0;
+        uint32 botAreaId = 0;
+        sTerrainMgr.GetZoneAndAreaId(botZoneId, botAreaId, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+
+        uint32 destinationZoneId = 0;
+        uint32 destinationAreaId = 0;
+        sTerrainMgr.GetZoneAndAreaId(destinationZoneId, destinationAreaId,
+            position->getMapId(), position->getX(), position->getY(), position->getZ());
+
+        const uint32 botId = botZoneId ? botZoneId : botAreaId;
+        const uint32 destinationId = destinationZoneId ? destinationZoneId : destinationAreaId;
+        return botId && botId == destinationId;
+    }
+
+    bool IsLocalQuestDestination(Player* bot, WorldPosition const* position)
+    {
+        if (!bot || !position || position->getMapId() != bot->GetMapId())
+            return false;
+
+        if (IsBotInStarterZone(bot) && IsDestinationInAllowedStarterCluster(bot, position))
+            return true;
+
+        return IsSameZoneDestination(bot, position);
+    }
+
+    bool IsAcceptableQuestGiver(Player* bot, QuestRelationTravelDestination* destination, PlayerTravelInfo const& travelInfo)
+    {
+        if (!bot || !destination || destination->GetPurpose() != TravelDestinationPurpose::QuestGiver)
+            return false;
+
+        Quest const* quest = sObjectMgr.GetQuestTemplate(destination->GetQuestId());
+        if (!quest)
+            return false;
+
+        if (bot->GetQuestStatus(destination->GetQuestId()) != QUEST_STATUS_NONE || bot->GetQuestRewardStatus(destination->GetQuestId()))
+            return false;
+
+        if (!destination->IsPossible(travelInfo))
+            return false;
+
+        return bot->CanTakeQuest(quest, false) || bot->GetLevel() <= 10;
+    }
+
+    bool IsFollowupQuestGiver(Player* bot, TravelDestination* destination, EntryQuestRelationMap const* relationMap)
+    {
+        return bot && destination && relationMap && GetQuestFollowOnBonus(bot, destination, *relationMap) > 0.0f;
+    }
+
+    bool IsBlockedRemoteTurnIn(PlayerbotAI* ai, QuestRelationTravelDestination* destination)
+    {
+        if (!ai || !destination || destination->GetPurpose() != TravelDestinationPurpose::QuestTaker)
+            return false;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return false;
+
+        const std::string suffix = std::to_string(destination->GetQuestId()) + ":" + std::to_string(destination->GetEntry());
+        const int blockedCount = context->GetValue<int>("manual int", "blocked remote turnin count::" + suffix)->Get();
+        const time_t blockedUntil = context->GetValue<time_t>("manual time", "blocked remote turnin until::" + suffix)->Get();
+        return blockedCount > 0 && blockedUntil > time(nullptr);
+    }
+
+    QuestIntentContext BuildQuestIntentContext(Player* bot, PlayerbotAI* ai, PartitionedTravelList const& partitionedList,
+        EntryQuestRelationMap const* relationMap)
+    {
+        QuestIntentContext context;
+        if (!bot || !ai)
+            return context;
+
+        (void)relationMap;
+
+        context.starterOrNewBot = IsStarterOrNewQuestBot(bot);
+        context.levelOneNoQuest = bot->GetLevel() == 1 && !HasQuestIntent(bot);
+
+        const PlayerTravelInfo travelInfo(bot);
+        for (const auto& [partition, points] : partitionedList)
+        {
+            (void)partition;
+
+            for (const auto& [destination, position, distance] : points)
+            {
+                (void)distance;
+
+                QuestRelationTravelDestination* relationDestination = dynamic_cast<QuestRelationTravelDestination*>(destination);
+                QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(destination);
+
+                if (relationDestination && relationDestination->GetPurpose() == TravelDestinationPurpose::QuestTaker)
+                {
+                    Quest const* quest = sObjectMgr.GetQuestTemplate(relationDestination->GetQuestId());
+                    if (quest && bot->CanRewardQuest(quest, false))
+                    {
+                        context.hasUsableActiveQuestWork = true;
+                        if (position && IsLocalQuestDestination(bot, position))
+                            context.hasUsableLocalQuestWork = true;
+                        continue;
+                    }
+                }
+
+                if (objectiveDestination && objectiveDestination->IsActive(bot, travelInfo) && objectiveDestination->IsPossible(travelInfo))
+                {
+                    context.hasUsableActiveQuestWork = true;
+                    if (position && IsLocalQuestDestination(bot, position))
+                        context.hasUsableLocalQuestWork = true;
+                    continue;
+                }
+
+                if (relationDestination && relationDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver &&
+                    IsAcceptableQuestGiver(bot, relationDestination, travelInfo))
+                {
+                    if (position && IsLocalQuestDestination(bot, position))
+                        context.hasUsableLocalQuestWork = true;
+                }
+            }
+        }
+
+        return context;
+    }
+
+    QuestIntentKind ClassifyQuestIntent(Player* bot, PlayerbotAI* ai, TravelDestination* destination, WorldPosition const* position,
+        EntryQuestRelationMap const* relationMap, QuestIntentContext const& context)
+    {
+        if (!bot || !destination)
+            return QuestIntentKind::None;
+
+        const PlayerTravelInfo travelInfo(bot);
+        const float distance = position ? position->distance(bot) : destination->DistanceTo(bot);
+        const bool nearby = IsNearbyQuestDistance(distance);
+        const bool local = position && IsLocalQuestDestination(bot, position);
+
+        if (QuestRelationTravelDestination* relationDestination = dynamic_cast<QuestRelationTravelDestination*>(destination))
+        {
+            if (relationDestination->GetPurpose() == TravelDestinationPurpose::QuestTaker)
+            {
+                Quest const* quest = sObjectMgr.GetQuestTemplate(relationDestination->GetQuestId());
+                if (!quest || !bot->CanRewardQuest(quest, false))
+                    return QuestIntentKind::None;
+
+                if (!local && IsBlockedRemoteTurnIn(ai, relationDestination))
+                    return QuestIntentKind::BlockedRemoteTurnIn;
+
+                return nearby || local ? QuestIntentKind::NearbyQuestTaker : QuestIntentKind::RemoteQuestTaker;
+            }
+
+            if (relationDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver &&
+                IsAcceptableQuestGiver(bot, relationDestination, travelInfo))
+            {
+                if (context.levelOneNoQuest && local)
+                    return QuestIntentKind::LevelOneClosestQuest;
+
+                if (nearby || local)
+                    return QuestIntentKind::NearbyQuestGiver;
+
+                if (IsFollowupQuestGiver(bot, destination, relationMap))
+                    return QuestIntentKind::SameZoneQuestGiverContinuation;
+
+                if (context.starterOrNewBot && !context.hasUsableLocalQuestWork && !context.hasUsableActiveQuestWork)
+                    return QuestIntentKind::ClosestQuestFallback;
+
+                return QuestIntentKind::BroadQuestGiver;
+            }
+        }
+
+        if (QuestObjectiveTravelDestination* objectiveDestination = dynamic_cast<QuestObjectiveTravelDestination*>(destination))
+        {
+            if (!objectiveDestination->IsPossible(travelInfo) || !objectiveDestination->IsActive(bot, travelInfo))
+                return QuestIntentKind::None;
+
+            if (local && IsBotInStarterZone(bot))
+                return QuestIntentKind::StarterLocalPriority;
+
+            if (local)
+                return QuestIntentKind::LocalObjective;
+
+            return QuestIntentKind::RemoteObjective;
+        }
+
+        return QuestIntentKind::None;
+    }
+
+    float GetQuestIntentBaseScore(QuestIntentKind kind)
+    {
+        switch (kind)
+        {
+            case QuestIntentKind::LevelOneClosestQuest: return 12000.0f;
+            case QuestIntentKind::NearbyQuestTaker: return 11000.0f;
+            case QuestIntentKind::NearbyQuestGiver: return 10000.0f;
+            case QuestIntentKind::StarterLocalPriority: return 9000.0f;
+            case QuestIntentKind::LocalObjective: return 8000.0f;
+            case QuestIntentKind::SameZoneQuestGiverContinuation: return 7000.0f;
+            case QuestIntentKind::ClosestQuestFallback: return 6000.0f;
+            case QuestIntentKind::RemoteObjective: return 5000.0f;
+            case QuestIntentKind::RemoteQuestTaker: return 4000.0f;
+            case QuestIntentKind::BroadQuestGiver: return 3000.0f;
+            case QuestIntentKind::BlockedRemoteTurnIn: return 500.0f;
+            default: return 0.0f;
+        }
+    }
+
+    float GetQuestIntentScore(Player* bot, PlayerbotAI* ai, TravelDestination* destination, WorldPosition const* position,
+        EntryQuestRelationMap const* relationMap, std::vector<uint32> const* questIds, QuestIntentContext const& context,
+        std::unordered_map<uint32, float>& questPriorityCache)
+    {
+        if (!bot || !destination)
+            return 0.0f;
+
+        const QuestIntentKind kind = ClassifyQuestIntent(bot, ai, destination, position, relationMap, context);
+        float score = GetQuestIntentBaseScore(kind);
+        if (!score)
+            return score;
+
+        score += GetQuestPriorityScore(ai, destination, questPriorityCache);
+
+        if (position)
+        {
+            score += std::max(0.0f, 150.0f - std::min(150.0f, position->distance(bot))) * 0.5f;
+            score += GetLocalQuestClusterScore(ai, destination, position) * 100.0f;
+        }
+
+        if (relationMap && questIds)
+        {
+            score += GetQuestHubBonus(bot, destination, *relationMap, *questIds) * 100.0f;
+            score += GetQuestFollowOnBonus(bot, destination, *relationMap) * 100.0f;
+        }
+
+        return score;
+    }
+
+    void LogQuestIntentFetches(PlayerbotAI* ai, Player* requester, Player* bot, std::vector<QuestIntentFetch> const& fetches)
+    {
+        if (!ai || !bot || !IsBotInStarterZone(bot))
+            return;
+
+        for (QuestIntentFetch const& fetch : fetches)
+        {
+            std::ostringstream out;
+            out << "starter_quest_diag request_fetch intent=" << FormatQuestIntentKind(fetch.kind)
+                << " purpose=" << fetch.purpose;
+            if (fetch.questId > 0)
+                out << " quest=" << DescribeQuest(bot, static_cast<uint32>(fetch.questId));
+            else
+                out << " quest=none";
+            out << " range=" << std::fixed << std::setprecision(1) << fetch.range;
+            TellTravelTrace(ai, requester, out.str());
+        }
     }
 
     bool HasPendingTravelDestinations(FutureDestinations* futureDestinations)
@@ -1417,6 +1717,7 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
     std::unordered_map<TravelDestination*, bool> isActive;
     std::unordered_map<uint32, float> questPriorityCache;
     const PlayerTravelInfo travelInfo(bot);
+    const QuestIntentContext intentContext = BuildQuestIntentContext(bot, ai, partitionedList, relationMap);
 
     bool hasTarget = false;
 
@@ -1437,18 +1738,8 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
             if (leftSocialScore != rightSocialScore)
                 return leftSocialScore > rightSocialScore;
 
-            float leftScore = GetQuestPriorityScore(ai, leftDestination, questPriorityCache) +
-                GetLocalQuestClusterScore(ai, leftDestination, leftPosition);
-            float rightScore = GetQuestPriorityScore(ai, rightDestination, questPriorityCache) +
-                GetLocalQuestClusterScore(ai, rightDestination, rightPosition);
-
-            if (relationMap && questIds)
-            {
-                leftScore += GetQuestHubBonus(bot, leftDestination, *relationMap, *questIds) +
-                    GetQuestFollowOnBonus(bot, leftDestination, *relationMap);
-                rightScore += GetQuestHubBonus(bot, rightDestination, *relationMap, *questIds) +
-                    GetQuestFollowOnBonus(bot, rightDestination, *relationMap);
-            }
+            float leftScore = GetQuestIntentScore(bot, ai, leftDestination, leftPosition, relationMap, questIds, intentContext, questPriorityCache);
+            float rightScore = GetQuestIntentScore(bot, ai, rightDestination, rightPosition, relationMap, questIds, intentContext, questPriorityCache);
 
             if (leftScore == rightScore)
                 return std::get<2>(left) < std::get<2>(right);
@@ -1527,6 +1818,15 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
 #endif
 
                 target->SetTarget(destination, position);
+                if (QuestIntentKind selectedIntent = ClassifyQuestIntent(bot, ai, destination, position, relationMap, intentContext);
+                    selectedIntent != QuestIntentKind::None)
+                {
+                    ai->TellDebug(requester,
+                        "[PBTRACE] quest_intent selected intent=" + FormatQuestIntentKind(selectedIntent) +
+                        " dest=\"" + destination->GetTitle() + "\"" +
+                        " dist=" + std::to_string(static_cast<uint32>(round(destination->DistanceTo(bot)))),
+                        "debug travel");
+                }
                 hasTarget = true;
                 break;
             }
@@ -2575,12 +2875,21 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
     WorldPosition center = event.getOwner() ? event.getOwner() : (GetMaster() ? GetMaster() : bot);
     const EntryQuestRelationMap relationMap = AI_VALUE_SAFE(EntryQuestRelationMap, "entry quest relation");
     const ArchetypeWeights& weights = ai->GetArchetypeWeights();
+    const bool starterOrNewBot = IsStarterOrNewQuestBot(bot);
+    const float nearbyQuestRange = std::max(120.0f, 120.0f * std::max(0.5f, weights.chainWeight));
+    const float localQuestRange = std::max(450.0f, static_cast<float>((400 + bot->GetLevel() * 10) * std::max(0.5f, weights.chainWeight)));
+    const float continuationRange = std::max(localQuestRange, starterOrNewBot ? 1500.0f : 900.0f);
 
     ai->TellDebug(ai->GetMaster(), "Getting new destination ranges for travel quest", "debug travel");
 
-    std::vector<std::tuple<uint32, int32, float>> destinationFetches = {
-        {(uint32)TravelDestinationPurpose::QuestGiver, 0, static_cast<float>((400 + bot->GetLevel() * 10) * std::max(0.5f, weights.chainWeight))}
+    std::vector<QuestIntentFetch> intentFetches;
+    auto pushFetch = [&](QuestIntentKind kind, uint32 purpose, int32 questId, float range)
+    {
+        intentFetches.push_back({ kind, purpose, questId, range });
     };
+
+    pushFetch(QuestIntentKind::NearbyQuestGiver, (uint32)TravelDestinationPurpose::QuestGiver, 0, nearbyQuestRange);
+    pushFetch(QuestIntentKind::SameZoneQuestGiverContinuation, (uint32)TravelDestinationPurpose::QuestGiver, 0, continuationRange);
 
     for (ObjectGuid guid : AI_VALUE_SAFE(std::list<ObjectGuid>, "group members"))
     {
@@ -2636,42 +2945,76 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
             const float weightedRange = static_cast<float>(1000 + (bot->GetLevel() * bot->GetLevel()) * 75) *
                 GetQuestArchetypePriorityMultiplier(bot, ai, dominantPurpose, questTemplate);
 
-            destinationFetches.push_back({ flag, static_cast<int32>(questId), weightedRange });
-
-            if (onlyClassQuest && destinationFetches.size() > 1) //Only do class quests if we have any.
+            if (flag == (uint32)TravelDestinationPurpose::QuestTaker)
             {
-                Quest const* firstQuest = sObjectMgr.GetQuestTemplate(std::get<1>(destinationFetches[1]));
+                pushFetch(QuestIntentKind::NearbyQuestTaker, flag, static_cast<int32>(questId), std::max(nearbyQuestRange, 250.0f));
+                pushFetch(QuestIntentKind::RemoteQuestTaker, flag, static_cast<int32>(questId), weightedRange);
+            }
+            else
+            {
+                pushFetch(IsBotInStarterZone(bot) ? QuestIntentKind::StarterLocalPriority : QuestIntentKind::LocalObjective,
+                    flag, static_cast<int32>(questId), std::max(localQuestRange, 350.0f));
+                pushFetch(QuestIntentKind::RemoteObjective, flag, static_cast<int32>(questId), weightedRange);
+            }
+
+            if (onlyClassQuest && intentFetches.size() > 2) //Only do class quests if we have any.
+            {
+                Quest const* firstQuest = nullptr;
+                for (QuestIntentFetch const& fetch : intentFetches)
+                {
+                    if (fetch.questId > 0)
+                    {
+                        firstQuest = sObjectMgr.GetQuestTemplate(static_cast<uint32>(fetch.questId));
+                        if (firstQuest)
+                            break;
+                    }
+                }
+
+                if (!firstQuest)
+                    continue;
 
                 if (firstQuest->GetRequiredClasses() && !questTemplate->GetRequiredClasses())
                     continue;
 
                 if (!firstQuest->GetRequiredClasses() && questTemplate->GetRequiredClasses())
-                    destinationFetches = { destinationFetches.front() };
+                    intentFetches.erase(std::remove_if(intentFetches.begin(), intentFetches.end(),
+                        [](QuestIntentFetch const& fetch) { return fetch.questId > 0; }), intentFetches.end());
             }
         }
     }
 
-    std::vector<uint32> questIds;
-    questIds.reserve(destinationFetches.size());
-    for (const auto& fetch : destinationFetches)
+    if (!HasQuestIntent(bot))
     {
-        const int32 questId = std::get<1>(fetch);
-        if (questId > 0)
-            questIds.push_back(static_cast<uint32>(questId));
+        pushFetch(bot->GetLevel() == 1 ? QuestIntentKind::LevelOneClosestQuest : QuestIntentKind::ClosestQuestFallback,
+            (uint32)TravelDestinationPurpose::QuestGiver, 0, continuationRange);
+    }
+    else if (starterOrNewBot)
+    {
+        pushFetch(QuestIntentKind::ClosestQuestFallback, (uint32)TravelDestinationPurpose::QuestGiver, 0, continuationRange);
+    }
+
+    pushFetch(QuestIntentKind::BroadQuestGiver, (uint32)TravelDestinationPurpose::QuestGiver, 0, std::max(continuationRange, 2500.0f));
+
+    std::vector<uint32> questIds;
+    questIds.reserve(intentFetches.size());
+    for (const auto& fetch : intentFetches)
+    {
+        if (fetch.questId > 0)
+            questIds.push_back(static_cast<uint32>(fetch.questId));
     }
 
     std::sort(questIds.begin(), questIds.end());
     questIds.erase(std::unique(questIds.begin(), questIds.end()), questIds.end());
 
     LogStarterQuestState(ai, ai->GetMaster(), bot, "request");
-    LogStarterQuestFetches(ai, ai->GetMaster(), bot, destinationFetches);
+    LogQuestIntentFetches(ai, ai->GetMaster(), bot, intentFetches);
 
-    *futureDestinations = LaunchTravelDestinations([partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, destinationFetches, questIds, relationMap, bot = bot]()
+    *futureDestinations = LaunchTravelDestinations([partitions = travelPartitions, travelInfo = PlayerTravelInfo(bot), center, intentFetches, questIds, relationMap, bot = bot]()
         {
             PartitionedTravelList list;
-            for (auto [purpose, questId, range] : destinationFetches)
+            for (QuestIntentFetch const& fetch : intentFetches)
             {
-                PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, travelInfo, purpose, { questId }, true, range);
+                PartitionedTravelList subList = sTravelMgr.GetPartitions(center, partitions, travelInfo, fetch.purpose, { fetch.questId }, true, fetch.range);
 
                 for (auto& [partition, points] : subList)
                     list[partition].insert(list[partition].end(), points.begin(), points.end());
@@ -2682,21 +3025,24 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
             const uint32 mapId = bot ? bot->GetMapId() : 0;
             const uint32 cityId = GetKnowledgeCityId(bot);
+            PlayerbotAI* botAi = bot ? bot->GetPlayerbotAI() : nullptr;
+            std::unordered_map<uint32, float> questPriorityCache;
+            const QuestIntentContext intentContext = BuildQuestIntentContext(bot, botAi, list, &relationMap);
             for (auto& [partition, points] : list)
             {
                 std::stable_sort(points.begin(), points.end(), [&](const TravelPoint& left, const TravelPoint& right)
                 {
                     TravelDestination* leftDestination = std::get<0>(left);
                     TravelDestination* rightDestination = std::get<0>(right);
+                    WorldPosition* leftPosition = std::get<1>(left);
+                    WorldPosition* rightPosition = std::get<1>(right);
 
                     const float leftScore =
-                        GetQuestDestinationScore(bot, leftDestination, mapId, cityId, questIds) +
-                        GetQuestHubBonus(bot, leftDestination, relationMap, questIds) +
-                        GetQuestFollowOnBonus(bot, leftDestination, relationMap);
+                        GetQuestIntentScore(bot, botAi, leftDestination, leftPosition, &relationMap, &questIds, intentContext, questPriorityCache) +
+                        GetQuestDestinationScore(bot, leftDestination, mapId, cityId, questIds);
                     const float rightScore =
-                        GetQuestDestinationScore(bot, rightDestination, mapId, cityId, questIds) +
-                        GetQuestHubBonus(bot, rightDestination, relationMap, questIds) +
-                        GetQuestFollowOnBonus(bot, rightDestination, relationMap);
+                        GetQuestIntentScore(bot, botAi, rightDestination, rightPosition, &relationMap, &questIds, intentContext, questPriorityCache) +
+                        GetQuestDestinationScore(bot, rightDestination, mapId, cityId, questIds);
 
                     if (leftScore == rightScore)
                         return std::get<2>(left) < std::get<2>(right);

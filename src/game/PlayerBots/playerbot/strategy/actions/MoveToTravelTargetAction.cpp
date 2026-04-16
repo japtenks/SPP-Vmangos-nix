@@ -11,6 +11,61 @@
 
 using namespace ai;
 
+namespace
+{
+    std::string BlockedRemoteTurnInSuffix(QuestRelationTravelDestination* destination)
+    {
+        if (!destination)
+            return {};
+
+        return std::to_string(destination->GetQuestId()) + ":" + std::to_string(destination->GetEntry());
+    }
+
+    bool IsRemoteQuestTurnInTarget(Player* bot, TravelTarget* target)
+    {
+        if (!bot || !target || !target->GetDestination() || !target->GetPosition())
+            return false;
+
+        QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(target->GetDestination());
+        if (!questDestination || questDestination->GetPurpose() != TravelDestinationPurpose::QuestTaker)
+            return false;
+
+        WorldPosition const* position = target->GetPosition();
+        if (position->getMapId() != bot->GetMapId())
+            return true;
+
+        return position->distance(bot) > 300.0f;
+    }
+
+    void RecordBlockedRemoteTurnIn(PlayerbotAI* ai, TravelTarget* target)
+    {
+        if (!ai || !target || !IsRemoteQuestTurnInTarget(ai->GetBot(), target))
+            return;
+
+        QuestRelationTravelDestination* questDestination = dynamic_cast<QuestRelationTravelDestination*>(target->GetDestination());
+        if (!questDestination)
+            return;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return;
+
+        const std::string suffix = BlockedRemoteTurnInSuffix(questDestination);
+        const int retryCount = static_cast<int>(std::max<uint32>(1u, target->GetRetryCount(true) / 2));
+        const time_t blockedUntil = time(nullptr) + 300;
+
+        context->GetValue<int>("manual int", "blocked remote turnin count::" + suffix)->Set(retryCount);
+        context->GetValue<time_t>("manual time", "blocked remote turnin until::" + suffix)->Set(blockedUntil);
+
+        ai->TellDebug(ai->GetMaster(),
+            "[PBTRACE] move_to_travel blocked_remote_turnin quest=" + std::to_string(questDestination->GetQuestId()) +
+            " entry=" + std::to_string(questDestination->GetEntry()) +
+            " retries=" + std::to_string(retryCount) +
+            " until=" + std::to_string(static_cast<uint32>(blockedUntil)),
+            "debug travel");
+    }
+}
+
 bool MoveToTravelTargetAction::Execute(Event& event)
 {
     TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
@@ -214,6 +269,7 @@ bool MoveToTravelTargetAction::Execute(Event& event)
 
             if (target->IsMaxRetry(true))
             {
+                RecordBlockedRemoteTurnIn(ai, target);
                 ai->TellDebug(ai->GetMaster(), "The target is cooling down because we failed to find a normal path to it a few times in a row.", "debug travel");
                 target->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
                 target->SetForced(false);
