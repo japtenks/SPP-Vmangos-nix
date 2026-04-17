@@ -346,7 +346,12 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
         //Check if we are allowed to move to this position. This is based on movement strategies follow, free, guard, stay. Bots are limited to finding targets near the center of those movement strategies.
         //For bots with real players they are also slightly limited in range unless the player stands still for a while. See free move values.
         if (guidP.GetWorldObject(bot->GetInstanceId()) && !AI_VALUE2(bool, "can free move to", guidP.to_string()))
-            SkipRpgTarget("Can not free move to.");
+        {
+            // Don't skip the active travel quest NPC — it may have wandered outside
+            // the free-move radius but the bot still needs to reach and interact with it.
+            if (!(isTravelTarget && travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK))
+                SkipRpgTarget("Can not free move to.");
+        }
 
         if (guidP.IsGameObject())
         {

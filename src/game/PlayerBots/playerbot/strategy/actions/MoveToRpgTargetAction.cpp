@@ -49,7 +49,22 @@ bool MoveToRpgTargetAction::Execute(Event& event)
         }
     }
 
-    if (unit && unit->IsMoving() && !urand(0, 20) && guidP.sqDistance2d(bot) < INTERACTION_DISTANCE * INTERACTION_DISTANCE * 2)
+    // Compute once: is this NPC our active travel quest target in WORK status?
+    // Used to suppress spurious rpg-target drops while the bot is chasing a
+    // wandering NPC whose spawn point it has already reached.
+    TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+    const int32 travelEntry = travelTarget ? travelTarget->GetEntry() : 0;
+    const uint32 normalizedTravelEntry = travelEntry < 0 ? static_cast<uint32>(-travelEntry) : static_cast<uint32>(travelEntry);
+    const bool isTravelQuestNpc = travelTarget &&
+        travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK &&
+        guidP.GetEntry() != 0 &&
+        normalizedTravelEntry != 0 &&
+        guidP.GetEntry() == normalizedTravelEntry;
+
+    // Suppress the "moving NPC nearby" 1/21 drop for travel quest NPCs.
+    // Wandering NPCs always have IsMoving()==true, so without this guard the
+    // bot drops the target on roughly every 21st tick once it gets within ~7y.
+    if (!isTravelQuestNpc && unit && unit->IsMoving() && !urand(0, 20) && guidP.sqDistance2d(bot) < INTERACTION_DISTANCE * INTERACTION_DISTANCE * 2)
     {
         AI_VALUE(std::set<ObjectGuid>&,"ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
 
@@ -65,15 +80,7 @@ bool MoveToRpgTargetAction::Execute(Event& event)
     if (!AI_VALUE2(bool, "can free move to", GuidPosition(wo).to_string()))
     {
         // Keep chasing a live quest NPC after we have already reached the travel point.
-        TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
-        const int32 travelEntry = travelTarget ? travelTarget->GetEntry() : 0;
-        const uint32 normalizedTravelEntry = travelEntry < 0 ? static_cast<uint32>(-travelEntry) : static_cast<uint32>(travelEntry);
-        const bool isTravelQuestNpc = travelTarget &&
-            travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK &&
-            guidP.GetEntry() != 0 &&
-            normalizedTravelEntry != 0 &&
-            guidP.GetEntry() == normalizedTravelEntry;
-
+        // (isTravelQuestNpc is hoisted above so both drop checks can use it.)
         if (!isTravelQuestNpc)
         {
             AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
@@ -119,7 +126,9 @@ bool MoveToRpgTargetAction::Execute(Event& event)
         return false;
     }
 
-    if (!urand(0, 50))
+    // Suppress the random 1/51 drop for travel quest NPCs so the bot doesn't
+    // stochastically abandon the NPC it needs to interact with.
+    if (!isTravelQuestNpc && !urand(0, 50))
     {
         AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
 
