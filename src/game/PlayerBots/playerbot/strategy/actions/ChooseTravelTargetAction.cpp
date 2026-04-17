@@ -82,7 +82,7 @@ namespace
         if (!bot)
             return false;
 
-        return (bot->GetGUIDLow() % 100) < 8;
+        return (bot->GetGUIDLow() % 100) < 2;
     }
 
     bool IsStarterZoneForRace(uint8 race, uint32 zoneId, uint32 areaId)
@@ -440,6 +440,99 @@ namespace
     float GetLocalQuestClusterScore(PlayerbotAI* ai, TravelDestination* destination, WorldPosition const* position);
     float GetQuestPriorityScore(PlayerbotAI* ai, TravelDestination* destination, std::unordered_map<uint32, float>& cache);
 
+    bool IsStarterFirstChainQuest(Player* bot, uint32 questId)
+    {
+        if (!bot || !questId)
+            return false;
+
+        switch (bot->GetRace())
+        {
+            case RACE_HUMAN:
+                switch (questId)
+                {
+                    case 783:  // A Threat Within
+                    case 7:    // Kobold Camp Cleanup
+                    case 15:   // Investigate Echo Ridge
+                    case 21:   // Skirmish at Echo Ridge
+                    case 18:   // Brotherhood of Thieves
+                    case 3903: // Milly Osworth
+                    case 5261: // Eagan Peltskinner
+                    case 6:    // Bounty on Garrick Padfoot
+                    case 54:   // Report to Goldshire
+                    case 16:   // Give Gerard a Drink
+                    case 2158: // Rest and Relaxation
+                    case 60:   // Kobold Candles
+                    case 61:   // Shipment to Stormwind
+                        return true;
+                    default:
+                        return false;
+                }
+            case RACE_DWARF:
+                switch (questId)
+                {
+                    case 179:  // Dwarven Outfitters
+                    case 170:  // A New Threat
+                    case 183:  // The Boar Hunter
+                    case 233:  // Coldridge Valley Mail Delivery
+                    case 234:  // Coldridge Valley Mail Delivery
+                    case 182:  // The Troll Cave
+                    case 218:  // The Stolen Journal
+                    case 282:  // Senir's Observations
+                    case 420:  // Senir's Observations
+                        return true;
+                    default:
+                        return false;
+                }
+            case RACE_NIGHTELF:
+                switch (questId)
+                {
+                    case 458:  // The Woodland Protector
+                    case 459:  // The Woodland Protector
+                    case 456:  // The Balance of Nature
+                    case 457:  // The Balance of Nature
+                        return true;
+                    default:
+                        return false;
+                }
+            case RACE_UNDEAD:
+                switch (questId)
+                {
+                    case 363:  // Rude Awakening
+                    case 364:  // The Mindless Ones
+                    case 380:  // Night Web's Hollow
+                    case 381:  // The Scarlet Crusade
+                        return true;
+                    default:
+                        return false;
+                }
+            case RACE_TAUREN:
+                switch (questId)
+                {
+                    case 747:  // The Hunt Begins
+                    case 752:  // A Humble Task
+                    case 750:  // The Hunt Continues
+                    case 753:  // A Humble Task
+                        return true;
+                    default:
+                        return false;
+                }
+            case RACE_ORC:
+            case RACE_TROLL:
+                switch (questId)
+                {
+                    case 788:  // Cutting Teeth
+                    case 789:  // Sting of the Scorpid
+                    case 792:  // Vile Familiars
+                    case 794:  // Burning Blade Medallion
+                        return true;
+                    default:
+                        return false;
+                }
+            default:
+                return false;
+        }
+    }
+
     std::string FormatQuestIntentKind(QuestIntentKind kind)
     {
         switch (kind)
@@ -514,7 +607,11 @@ namespace
         if (!destination->IsPossible(travelInfo))
             return false;
 
-        return bot->CanTakeQuest(quest, false) || bot->GetLevel() <= 10;
+        if (bot->GetLevel() == 1 && !HasQuestIntent(bot) && IsBotInStarterZone(bot) &&
+            !IsStarterFirstChainQuest(bot, destination->GetQuestId()))
+            return false;
+
+        return bot->CanTakeQuest(quest, false);
     }
 
     bool IsFollowupQuestGiver(Player* bot, TravelDestination* destination, EntryQuestRelationMap const* relationMap)
@@ -1783,7 +1880,12 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                         (questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestGiver ||
                          questRelationDestination->GetPurpose() == TravelDestinationPurpose::QuestTaker))
                     {
-                        if (IsBotInStarterZone(bot) && !IsDestinationInAllowedStarterCluster(bot, position))
+                        if (intentContext.hasUsableLocalQuestWork)
+                        {
+                            ai->TellDebug(requester, "Blocking inactive quest continuation because local quest work is available: " +
+                                destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                        }
+                        else if (IsBotInStarterZone(bot) && !IsDestinationInAllowedStarterCluster(bot, position))
                         {
                             ai->TellDebug(requester, "Blocking distant quest continuation outside starter cluster: " +
                                 destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");

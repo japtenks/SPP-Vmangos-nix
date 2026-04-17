@@ -104,9 +104,9 @@ namespace
         if (!bot)
             return false;
 
-        // Small, deterministic cohort of bots that can wander to other
+        // Tiny, deterministic cohort of bots that can wander to other
         // same-faction starter zones early to simulate racial rep exploration.
-        return (bot->GetGUIDLow() % 100) < 8;
+        return (bot->GetGUIDLow() % 100) < 2;
     }
 
     bool IsStarterZoneForRace(uint8 race, uint32 zoneId, uint32 areaId)
