@@ -607,7 +607,7 @@ namespace
         if (!destination->IsPossible(travelInfo))
             return false;
 
-        if (bot->GetLevel() == 1 && !HasQuestIntent(bot) && IsBotInStarterZone(bot) &&
+        if (bot->GetLevel() == 1 && !HasQuestIntent(bot) &&
             !IsStarterFirstChainQuest(bot, destination->GetQuestId()))
             return false;
 
