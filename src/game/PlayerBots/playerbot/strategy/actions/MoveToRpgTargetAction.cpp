@@ -64,15 +64,33 @@ bool MoveToRpgTargetAction::Execute(Event& event)
 
     if (!AI_VALUE2(bool, "can free move to", GuidPosition(wo).to_string()))
     {
-        AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
+        // Keep chasing a live quest NPC after we have already reached the travel point.
+        TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
+        const int32 travelEntry = travelTarget ? travelTarget->GetEntry() : 0;
+        const uint32 normalizedTravelEntry = travelEntry < 0 ? static_cast<uint32>(-travelEntry) : static_cast<uint32>(travelEntry);
+        const bool isTravelQuestNpc = travelTarget &&
+            travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_WORK &&
+            guidP.GetEntry() != 0 &&
+            normalizedTravelEntry != 0 &&
+            guidP.GetEntry() == normalizedTravelEntry;
 
-        RESET_AI_VALUE(GuidPosition, "rpg target");
+        if (!isTravelQuestNpc)
+        {
+            AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
+
+            RESET_AI_VALUE(GuidPosition, "rpg target");
+
+            if (ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT))
+            {
+                ai->TellPlayerNoFacing(GetMaster(), "Rpg target is far from master. Random drop target.");
+            }
+            return false;
+        }
 
         if (ai->HasStrategy("debug rpg", BotState::BOT_STATE_NON_COMBAT))
         {
-            ai->TellPlayerNoFacing(GetMaster(), "Rpg target is far from mater. Random drop target.");
+            ai->TellPlayerNoFacing(GetMaster(), "Rpg target is travel quest npc, moving to live position.");
         }
-        return false;
     }
 
     if (guidP.distance(bot) > sPlayerbotAIConfig.reactDistance * 2)
@@ -251,5 +269,4 @@ bool MoveToRpgTargetAction::isUseful()
 
     return true;
 }
-
 

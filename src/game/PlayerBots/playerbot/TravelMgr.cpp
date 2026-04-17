@@ -183,6 +183,22 @@ namespace
         }
     }
 
+    bool IsQuestTravelPurpose(TravelDestinationPurpose purpose)
+    {
+        switch (purpose)
+        {
+            case TravelDestinationPurpose::QuestGiver:
+            case TravelDestinationPurpose::QuestObjective1:
+            case TravelDestinationPurpose::QuestObjective2:
+            case TravelDestinationPurpose::QuestObjective3:
+            case TravelDestinationPurpose::QuestObjective4:
+            case TravelDestinationPurpose::QuestTaker:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     uint32 GetTravelTargetQuestId(const TravelTarget* target)
     {
         if (!target || !target->GetDestination())
@@ -208,6 +224,9 @@ namespace
         BotSession& session = ai->GetSession();
         if (!session.isPaused && session.state == GetSessionStateForTravelPurpose(purpose))
         {
+            if (IsQuestTravelPurpose(purpose))
+                return;
+
             session.Reset(SessionState::IDLE);
             ai->OpenMaintenanceBreakpoint("goal completed");
         }

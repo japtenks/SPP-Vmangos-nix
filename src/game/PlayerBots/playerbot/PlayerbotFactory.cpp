@@ -3086,7 +3086,7 @@ bool PlayerbotFactory::NeedsProfessionRankUp(Player* bot)
     for (uint32 skill : kProfessions)
     {
         const uint32 current = bot->GetSkillValue(skill);
-        const uint32 maximum = bot->GetMaxSkillValue(skill);
+        const uint32 maximum = bot->GetSkillMax(skill);
 
         // Bot has this skill, is at or near the rank cap, and the cap
         // is below 300 (meaning there IS a higher rank to unlock).
