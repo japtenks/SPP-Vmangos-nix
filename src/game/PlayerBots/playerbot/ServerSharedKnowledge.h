@@ -14,6 +14,7 @@ enum class NpcKnowledgePurpose : uint8
     REAGENT_VENDOR_ITEM = 3,
     QUEST_GIVER = 4,
     QUEST_TAKER = 5,
+    VENDOR_GEAR = 6,
 };
 
 struct NpcUsefulnessKnowledgeKey
@@ -63,6 +64,9 @@ public:
     void RecordReagentVendorItem(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
     float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, uint32 itemId, uint32 mapId, uint32 cityId = 0) const;
     float GetReagentVendorItemConfidence(uint32 vendorEntry, uint32 requirement, std::vector<uint32> const& itemIds, uint32 mapId, uint32 cityId = 0) const;
+
+    void RecordVendorGearItem(uint32 vendorEntry, uint32 classId, uint32 itemId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
+    float GetVendorGearItemConfidence(uint32 vendorEntry, uint32 classId, uint32 itemId, uint32 mapId, uint32 cityId = 0) const;
 
     void RecordQuestGiver(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0, float delta = 0.1f);
     float GetQuestGiverConfidence(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId = 0) const;

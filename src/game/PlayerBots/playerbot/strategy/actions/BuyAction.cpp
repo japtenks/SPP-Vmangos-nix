@@ -220,6 +220,15 @@ bool BuyAction::Execute(Event& event)
                     {
                         RESET_AI_VALUE2(ItemUsage, "item usage", tItem->item);
                         ai->DoSpecificAction("equip upgrades", event, true);
+                        // Record that this vendor sells equippable gear for this class and map
+                        // so future bots know to include this vendor in shopping trips.
+                        sServerSharedKnowledge.RecordVendorGearItem(
+                            pCreature->GetEntry(),
+                            bot->getClass(),
+                            tItem->item,
+                            bot->GetMapId(),
+                            GetKnowledgeCityId(bot),
+                            0.1f);
                         break;
                     }
                 }

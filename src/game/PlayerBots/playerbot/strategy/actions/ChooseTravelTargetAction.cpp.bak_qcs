@@ -696,12 +696,9 @@ namespace
         return bot && (IsBotInStarterZone(bot) || bot->GetLevel() <= 10);
     }
 
-    // Quest stacking: new/starter bots scan a wider radius (150 y) for
-    // nearby quest givers so they batch-collect before doing objectives.
-    bool IsNearbyQuestDistance(float distance, bool starterOrNew = false)
+    bool IsNearbyQuestDistance(float distance)
     {
-        const float threshold = starterOrNew ? 150.0f : 80.0f;
-        return distance <= threshold;
+        return distance <= 80.0f;
     }
 
     bool IsSameZoneDestination(Player* bot, WorldPosition const* position)
@@ -840,7 +837,7 @@ namespace
 
         const PlayerTravelInfo travelInfo(bot);
         const float distance = position ? position->distance(bot) : destination->DistanceTo(bot);
-        const bool nearby = IsNearbyQuestDistance(distance, context.starterOrNewBot);
+        const bool nearby = IsNearbyQuestDistance(distance);
         const bool local = position && IsLocalQuestDestination(bot, position);
 
         if (QuestRelationTravelDestination* relationDestination = dynamic_cast<QuestRelationTravelDestination*>(destination))
@@ -893,62 +890,6 @@ namespace
         return QuestIntentKind::None;
     }
 
-    // Chain-head bonus: when the bot has < 5 active quests, reward
-    // quest-giver NPCs that offer the first quest in a chain (no
-    // prerequisite, has a follow-on).  This seeds the "oh look shiny!"
-    // behaviour -- bots gravitate to chain-entry NPCs when fresh to a zone.
-    float GetChainHeadBonus(Player* bot, TravelDestination* destination,
-        EntryQuestRelationMap const* relationMap)
-    {
-        if (!bot || !destination || !relationMap ||
-            destination->GetPurpose() != TravelDestinationPurpose::QuestGiver)
-            return 0.0f;
-
-        // Count active (non-rewarded) quests in the log.
-        uint32 activeQuestCount = 0;
-        const QuestStatusMap& questStatusMap = bot->GetQuestStatusMap();
-        for (const auto& [questId, status] : questStatusMap)
-        {
-            if (!status.m_rewarded &&
-                (status.m_status == QUEST_STATUS_INCOMPLETE ||
-                 status.m_status == QUEST_STATUS_COMPLETE))
-                ++activeQuestCount;
-        }
-
-        // Only apply when the bot is light on quests.
-        if (activeQuestCount >= 5)
-            return 0.0f;
-
-        const float scale = std::max(0.0f, (5.0f - float(activeQuestCount)) / 5.0f);
-
-        auto entryItr = relationMap->find(destination->GetEntry());
-        if (entryItr == relationMap->end())
-            return 0.0f;
-
-        float maxBonus = 0.0f;
-        for (const auto& [questId, flags] : entryItr->second)
-        {
-            if (!(flags & static_cast<uint8>(TravelDestinationPurpose::QuestGiver)))
-                continue;
-
-            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
-            if (!quest || !bot->CanTakeQuest(quest, false) ||
-                bot->GetQuestStatus(questId) != QUEST_STATUS_NONE)
-                continue;
-
-            // Chain-head: no prerequisite but has a follow-on quest.
-            if (quest->GetPrevQuestId() != 0)
-                continue;
-
-            if (!quest->GetNextQuestId() && !quest->GetNextQuestInChain())
-                continue;
-
-            maxBonus = std::max(maxBonus, 0.5f * scale);
-        }
-
-        return maxBonus;
-    }
-
     float GetQuestIntentBaseScore(QuestIntentKind kind)
     {
         switch (kind)
@@ -992,9 +933,7 @@ namespace
         {
             score += GetQuestHubBonus(bot, destination, *relationMap, *questIds) * 100.0f;
             score += GetQuestFollowOnBonus(bot, destination, *relationMap) * 100.0f;
-            score += GetChainHeadBonus(bot, destination, relationMap) * 100.0f;
         }
-// [patch_quest_chain_stacking applied]
 
         return score;
     }

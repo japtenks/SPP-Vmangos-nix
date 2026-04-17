@@ -109,3 +109,25 @@ bool VendorHasUsefulItemValue::Calculate()
 
     return false;
 }
+
+bool ShouldBuyVendorGearValue::Calculate()
+{
+    // Require gear budget before doing anything else.
+    if (AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::gear) == 0)
+        return false;
+
+    // Check every equipment slot: if any is empty or holds grey/white-quality
+    // gear the bot is a candidate for a vendor or AH shopping trip.
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        if (!item)
+            return true;    // Empty slot -- vendors or AH may fill it.
+
+        ItemPrototype const* proto = item->GetProto();
+        if (proto && proto->Quality <= ITEM_QUALITY_NORMAL)
+            return true;    // Grey or white item -- almost certainly upgradeable.
+    }
+
+    return false;
+}

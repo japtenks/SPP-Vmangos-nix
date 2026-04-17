@@ -326,11 +326,19 @@ bool NeedTravelPurposeValue::Calculate()
             return true;
         if (AI_VALUE2(bool, "has strategy", "free") && AI_VALUE(bool, "should sell") && AI_VALUE(bool, "can sell"))
             return true;
+        // Also travel to vendor to buy gear for empty or low-quality slots.
+        if (AI_VALUE2(bool, "has strategy", "free") && AI_VALUE(bool, "should buy vendor gear"))
+            return true;
         break;
     case TravelDestinationPurpose::AH:
         if (AI_VALUE2(bool, "group or", "should ah sell,can ah sell,following party"))
             return true;
         if (AI_VALUE2(bool, "has strategy", "free") && AI_VALUE(bool, "should ah sell") && AI_VALUE(bool, "can ah sell"))
+            return true;
+        // Also travel to AH to shop for gear upgrades -- AhBidAction already
+        // handles buying ITEM_USAGE_EQUIP items when the bot is at the AH, so
+        // all we need here is to trigger the trip.
+        if (AI_VALUE2(bool, "has strategy", "free") && AI_VALUE(bool, "should buy vendor gear"))
             return true;
         break;
     case TravelDestinationPurpose::GatherFishing:

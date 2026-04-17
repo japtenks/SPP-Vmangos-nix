@@ -128,6 +128,16 @@ float ServerSharedKnowledge::GetReagentVendorItemConfidence(uint32 vendorEntry, 
     return GetNpcUsefulnessConfidence(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::REAGENT_VENDOR_ITEM), requirement, itemIds, mapId, cityId);
 }
 
+void ServerSharedKnowledge::RecordVendorGearItem(uint32 vendorEntry, uint32 classId, uint32 itemId, uint32 mapId, uint32 cityId, float delta)
+{
+    RecordNpcUsefulness(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::VENDOR_GEAR), classId, itemId, mapId, cityId, delta);
+}
+
+float ServerSharedKnowledge::GetVendorGearItemConfidence(uint32 vendorEntry, uint32 classId, uint32 itemId, uint32 mapId, uint32 cityId) const
+{
+    return GetNpcUsefulnessConfidence(vendorEntry, static_cast<uint32>(NpcKnowledgePurpose::VENDOR_GEAR), classId, itemId, mapId, cityId);
+}
+
 void ServerSharedKnowledge::RecordQuestGiver(uint32 npcEntry, uint32 questId, uint32 mapId, uint32 cityId, float delta)
 {
     RecordNpcUsefulness(npcEntry, static_cast<uint32>(NpcKnowledgePurpose::QUEST_GIVER), 1, questId, mapId, cityId, delta);

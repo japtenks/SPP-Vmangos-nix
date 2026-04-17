@@ -63,5 +63,26 @@ namespace ai
         virtual std::vector<std::string> GetUsedValues() { return { "item usage" }; }
 #endif 
     };
+
+    // Returns true when the bot has empty or grey/white-quality equipment slots
+    // AND has gear budget remaining.  Used to trigger proactive travel to vendors
+    // and the Auction House so bots go shopping as well as selling.
+    class ShouldBuyVendorGearValue : public BoolCalculatedValue
+    {
+    public:
+        ShouldBuyVendorGearValue(PlayerbotAI* ai) : BoolCalculatedValue(ai, "should buy vendor gear", 30) {}
+
+        virtual bool Calculate() override;
+
+#ifdef GenerateBotHelp
+        virtual std::string GetHelpName() { return "should buy vendor gear"; }
+        virtual std::string GetHelpTypeName() { return "item"; }
+        virtual std::string GetHelpDescription()
+        {
+            return "Returns true when the bot has empty or low-quality equipment slots and has gear budget.";
+        }
+        virtual std::vector<std::string> GetUsedValues() { return { "free money for" }; }
+#endif
+    };
 }
 

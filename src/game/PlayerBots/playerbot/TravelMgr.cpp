@@ -1293,6 +1293,30 @@ void TravelTarget::CheckStatus()
 
         if (destinationInactive || conditionsInactive)
         {
+            // Allow continued travel to a quest NPC that was selected despite
+            // failing IsActive() (e.g. it is outside the starter-zone boundary
+            // or free-move radius). ChooseTravelTargetAction already approved
+            // this target via its allowInactiveQuestContinuation path — don't
+            // invalidate it here just because IsActive() is still false.
+            // Guard: IsPossible() must still pass (level/slot checks).
+            if (destinationInactive && GetStatus() == TravelStatus::TRAVEL_STATUS_TRAVEL)
+            {
+                if (QuestRelationTravelDestination* questDest =
+                    dynamic_cast<QuestRelationTravelDestination*>(tDestination))
+                {
+                    PlayerTravelInfo travelInfo(bot);
+                    if (questDest->IsPossible(travelInfo) &&
+                        (questDest->GetPurpose() == TravelDestinationPurpose::QuestGiver ||
+                         questDest->GetPurpose() == TravelDestinationPurpose::QuestTaker))
+                    {
+                        ai->TellDebug(ai->GetMaster(),
+                            "Quest destination inactive but still possible — continuing travel to " +
+                            tDestination->GetTitle(), "debug travel");
+                        return;
+                    }
+                }
+            }
+
             std::ostringstream out;
             out << "The target is cooling down because "
                 << (destinationInactive ? "destination_active=no" : "conditions_active=no")
