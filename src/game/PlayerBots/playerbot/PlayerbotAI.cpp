@@ -6262,13 +6262,126 @@ GrouperType PlayerbotAI::GetGrouperType()
     uint32 maxGroupType = sPlayerbotAIConfig.randomBotRaidNearby ? 100 : 95;
     uint32 grouperNumber = GetFixedBotNumber(BotTypeNumber::GROUPER_TYPE_NUMBER, maxGroupType, 0);
 
-    //20% solo
+    // -----------------------------------------------------------------------
+    // Role-aware leadership bias.
+    //
+    // Tank and healer specs are more likely to be the social organisers of
+    // a group in vanilla WoW — they're the bottleneck role so they naturally
+    // take charge.  We boost their grouperNumber toward the LEADER range.
+    //
+    // Hardcore archetype is an OVERLAY, not a separate leader bucket.
+    // A hardcore bot can be any spec; they're more motivated and experienced
+    // so get an additional nudge toward leadership regardless of class.
+    //
+    // Bonuses are capped so a bot can't exceed RAIDER range artificially.
+    //
+    // Group time cap: once a bot has been in a non-dungeon group longer than
+    // its archetype's maxSessionMinutes, temporarily return SOLO so the
+    // LeaveGroupAction's chance rolls fire more readily.
+    // -----------------------------------------------------------------------
+
+    // Role bonus
+    const int32 specTab = AiFactory::GetPlayerSpecTab(bot);
+    int32 roleBonus = 0;
+
+    switch (bot->GetClass())
+    {
+        case CLASS_WARRIOR:
+            if (specTab == 2) roleBonus = 15;   // Protection → tank leader
+            break;
+        case CLASS_PALADIN:
+            if (specTab == 1) roleBonus = 15;   // Protection
+            else if (specTab == 0) roleBonus = 8; // Holy → healer organiser
+            break;
+        case CLASS_PRIEST:
+            if (specTab != 2) roleBonus = 8;    // Holy/Disc → healer organiser
+            break;
+        case CLASS_DRUID:
+            if (specTab == 2) roleBonus = 8;    // Restoration
+            break;
+        case CLASS_SHAMAN:
+            if (specTab == 2) roleBonus = 8;    // Restoration
+            break;
+        default:
+            break;
+    }
+
+    // Hardcore overlay bonus
+    if (GetArchetype() == BotArchetype::HARDCORE)
+        roleBonus += 10;
+
+    // Apply bonus, clamp to maxGroupType
+    uint32 adjustedNumber = static_cast<uint32>(
+        std::min(static_cast<int32>(maxGroupType), static_cast<int32>(grouperNumber) + roleBonus));
+
+    // Group time cap for overworld groups
+    // If the bot has been in a non-dungeon group past its session limit,
+    // nudge it back toward SOLO so the leave-group chance rolls fire.
+    if (bot->GetGroup() && !bot->GetMap()->IsDungeon())
+    {
+        int32 joinedAt = AI_VALUE2(int32, "manual saved int", "group joined time");
+        if (joinedAt > 0)
+        {
+            const uint32 elapsedMinutes = static_cast<uint32>((time(nullptr) - joinedAt) / 60);
+            const uint32 cap = GetArchetypeWeights().maxSessionMinutes;
+            if (elapsedMinutes > cap)
+            {
+                // Past the cap — treat this bot as SOLO so leave-group fires.
+                // We don't reset the timer here; LeaveGroupAction will clear it
+                // when the bot actually leaves.
+                if (!HasRealPlayerMaster())
+                    return GrouperType::SOLO;
+            }
+        }
+    }
+
+    // Record group-join time when first joining a group
+    if (bot->GetGroup())
+    {
+        int32 joinedAt = AI_VALUE2(int32, "manual saved int", "group joined time");
+        if (joinedAt == 0)
+            SET_AI_VALUE2(int32, "manual saved int", "group joined time",
+                static_cast<int32>(time(nullptr)));
+    }
+    else
+    {
+        // Clear join time when not in a group
+        SET_AI_VALUE2(int32, "manual saved int", "group joined time", 0);
+    }
+
+    // Use adjustedNumber for the rest of the distribution
+    grouperNumber = adjustedNumber;
+
+    //20% solo (adjusted by role — tanks/healers fall here less often)
     //50% member
     //20% leader
     //10% raider
 
     if (grouperNumber < 20 && !HasRealPlayerMaster())
-        return GrouperType::SOLO;
+    {
+        // SOLO bots normally never group. Exception: if they have stuck elite
+        // or dungeon quests they can't complete alone, temporarily promote to
+        // MEMBER so they accept invites from LEADER-type bots. They still won't
+        // invite others themselves (MEMBER type doesn't invite).
+        QuestStatusMap& questMap = bot->GetQuestStatusMap();
+        bool hasEliteQuest = false;
+        for (auto const& [questId, questStatus] : questMap)
+        {
+            if (questStatus.m_rewarded) continue;
+            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+            if (!quest) continue;
+            if (quest->GetType() == QUEST_TYPE_ELITE ||
+                quest->GetType() == QUEST_TYPE_DUNGEON ||
+                quest->GetType() == QUEST_TYPE_RAID)
+            {
+                hasEliteQuest = true;
+                break;
+            }
+        }
+        if (!hasEliteQuest)
+            return GrouperType::SOLO;
+        // Fall through to MEMBER for elite-quest SOLO bots
+    }
     if (grouperNumber < 75)
         return GrouperType::MEMBER;
     if (grouperNumber < 80 || bot->GetLevel() < 3)

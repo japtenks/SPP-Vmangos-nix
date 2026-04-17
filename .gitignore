@@ -119,3 +119,6 @@ revision.h
 migrations_list.h
 Progression.h
 *.md
+*.py
+*.Identifier
+*.tbc

@@ -445,11 +445,36 @@ namespace
         if (!bot || !questId)
             return false;
 
+        // Quests that require a special item or emote that bots cannot
+        // autonomously satisfy — block regardless of race.
+        static const std::unordered_set<uint32> kUnsatisfiableStarterQuests = {
+            3861, // CLUCK! — requires Special Chicken Feed in bags
+        };
+        if (kUnsatisfiableStarterQuests.count(questId))
+            return false;
+
+        // Class/race seed note quests — valid for any race at level 1.
+        static const std::unordered_set<uint32> kSeedNoteQuests = {
+            3091, // Simple Note
+            3093, // Rune-Inscribed Note
+            3116, // Simple Sigil
+            3117, // Etched Sigil
+            3118, // Encrypted Sigil
+            3119, // Hallowed Sigil
+            3120, // Verdant Sigil
+        };
+        if (kSeedNoteQuests.count(questId))
+            return true;
+
         switch (bot->GetRace())
         {
+            // -----------------------------------------------------------------
+            // HUMAN — Northshire Abbey + Elwynn Forest
+            // -----------------------------------------------------------------
             case RACE_HUMAN:
                 switch (questId)
                 {
+                    // Northshire
                     case 783:  // A Threat Within
                     case 7:    // Kobold Camp Cleanup
                     case 15:   // Investigate Echo Ridge
@@ -459,17 +484,32 @@ namespace
                     case 5261: // Eagan Peltskinner
                     case 6:    // Bounty on Garrick Padfoot
                     case 54:   // Report to Goldshire
+                    // Elwynn Forest
                     case 16:   // Give Gerard a Drink
                     case 2158: // Rest and Relaxation
                     case 60:   // Kobold Candles
                     case 61:   // Shipment to Stormwind
+                    case 47:   // Gold Dust Exchange
+                    case 62:   // The Fargodeep Mine
+                    case 76:   // The Jasperlode Mine
+                    case 87:   // Goldtooth
+                    case 83:   // Red Linen Goods
+                    case 112:  // Collecting Kelp
+                    case 114:  // The Escape
+                    case 5545: // A Bundle of Trouble
                         return true;
                     default:
                         return false;
                 }
+
+            // -----------------------------------------------------------------
+            // DWARF + GNOME — Coldridge Valley + Dun Morogh (shared zone)
+            // -----------------------------------------------------------------
             case RACE_DWARF:
+            case RACE_GNOME:
                 switch (questId)
                 {
+                    // Coldridge Valley
                     case 179:  // Dwarven Outfitters
                     case 170:  // A New Threat
                     case 183:  // The Boar Hunter
@@ -479,55 +519,154 @@ namespace
                     case 218:  // The Stolen Journal
                     case 282:  // Senir's Observations
                     case 420:  // Senir's Observations
+                    // Dun Morogh
+                    case 403:  // Guarded Thunderbrew Barrel
+                    case 2160: // Supplies to Tannok
+                    case 400:  // Tools for Steelgrill
+                    case 310:  // Bitter Rivals
+                    case 317:  // Stocking Jetsteam
+                    case 308:  // Distracting Jarven
+                    case 311:  // Return to Marleth
+                    case 318:  // Evershine
+                    case 313:  // The Grizzled Den
+                    case 319:  // A Favor for Evershine
+                    case 320:  // Return to Bellowfiz
+                    case 315:  // The Perfect Stout
+                    case 432:  // Those Blasted Troggs!
+                    case 291:  // The Reports
                         return true;
                     default:
                         return false;
                 }
+
+            // -----------------------------------------------------------------
+            // NIGHT ELF — Shadowglen + Teldrassil
+            // -----------------------------------------------------------------
             case RACE_NIGHTELF:
                 switch (questId)
                 {
+                    // Shadowglen
                     case 458:  // The Woodland Protector
                     case 459:  // The Woodland Protector
                     case 456:  // The Balance of Nature
                     case 457:  // The Balance of Nature
+                    // Teldrassil
+                    case 929:  // Crown of the Earth
+                    case 933:  // Crown of the Earth
+                    case 2438: // The Emerald Dreamcatcher
+                    case 475:  // A Troubling Breeze
+                    case 476:  // Gnarlpine Corruption
+                    case 488:  // Zenn's Bidding
+                    case 997:  // Denalan's Earth
+                    case 489:  // Seek Redemption!
+                    case 918:  // Timberling Seeds
+                    case 919:  // Timberling Sprouts
+                    case 922:  // Rellian Greenspyre
+                    case 932:  // Twisted Hatred
+                    case 2459: // Ferocitas the Dream Eater
+                    case 2541: // The Sleeping Druid
+                    case 487:  // The Road to Darnassus
                         return true;
                     default:
                         return false;
                 }
+
+            // -----------------------------------------------------------------
+            // UNDEAD — Deathknell + Tirisfal Glades
+            // -----------------------------------------------------------------
             case RACE_UNDEAD:
                 switch (questId)
                 {
+                    // Deathknell
                     case 363:  // Rude Awakening
                     case 364:  // The Mindless Ones
                     case 380:  // Night Web's Hollow
                     case 381:  // The Scarlet Crusade
+                    // Tirisfal Glades
+                    case 5481: // Gordo's Task
+                    case 404:  // A Putrid Task
+                    case 5482: // Doom Weed
+                    case 361:  // A Letter Undelivered
+                    case 365:  // Fields of Grief
+                    case 407:  // Fields of Grief
+                    case 374:  // Proof of Demise
+                    case 358:  // Graverobbers
+                    case 366:  // Return the Book
+                    case 405:  // The Prodigal Lich
+                    case 427:  // At War With The Scarlet Crusade
+                    case 370:  // At War With The Scarlet Crusade
+                    case 371:  // At War With The Scarlet Crusade
                         return true;
                     default:
                         return false;
                 }
+
+            // -----------------------------------------------------------------
+            // TAUREN — Camp Narache + Mulgore
+            // -----------------------------------------------------------------
             case RACE_TAUREN:
                 switch (questId)
                 {
+                    // Camp Narache
                     case 747:  // The Hunt Begins
                     case 752:  // A Humble Task
                     case 750:  // The Hunt Continues
                     case 753:  // A Humble Task
+                    case 755:  // Rites of the Earthmother
+                    case 757:  // Rite of Strength
+                    case 780:  // The Battleboars
+                    case 781:  // Attack on Camp Narache
+                    // Mulgore
+                    case 745:  // Sharing the Land
+                    case 748:  // Poison Water
+                    case 767:  // Rite of Vision
+                    case 771:  // Rite of Vision
+                    case 772:  // Rite of Vision
+                    case 754:  // Winterhoof Cleansing
+                    case 761:  // Swoop Hunting
+                    case 756:  // Thunderhorn Totem
+                    case 758:  // Thunderhorn Cleansing
+                    case 743:  // Dangers of the Windfury
+                    case 749:  // The Ravaged Caravan
+                    case 751:  // The Ravaged Caravan
+                    case 766:  // Mazzranache
+                    case 773:  // Rite of Wisdom
+                    case 775:  // Journey into Thunder Bluff
                         return true;
                     default:
                         return false;
                 }
+
+            // -----------------------------------------------------------------
+            // ORC + TROLL — Valley of Trials + Durotar
+            // -----------------------------------------------------------------
             case RACE_ORC:
             case RACE_TROLL:
                 switch (questId)
                 {
+                    // Valley of Trials
                     case 788:  // Cutting Teeth
                     case 789:  // Sting of the Scorpid
                     case 792:  // Vile Familiars
                     case 794:  // Burning Blade Medallion
+                    case 5441: // Lazy Peons
+                    // Durotar
+                    case 2161: // A Peon's Burden
+                    case 784:  // Vanquish the Betrayers
+                    case 791:  // Carry Your Weight
+                    case 823:  // Report to Orgnil
+                    case 818:  // A Solvent Spirit
+                    case 825:  // From The Wreckage....
+                    case 785:  // A Strategic Alliance
+                    case 786:  // Thwarting Kolkar Aggression
+                    case 817:  // Practical Prey
+                    case 808:  // Minshina's Skull
+                    case 826:  // Zalazane
                         return true;
                     default:
                         return false;
                 }
+
             default:
                 return false;
         }
@@ -2315,6 +2454,56 @@ bool RequestTravelTargetAction::isUseful() {
     if (AI_VALUE(bool, "travel target active"))
         return false;
 
+    // -----------------------------------------------------------------------
+    // Idle → Tournament (fishing / STV Extravaganza) session transition.
+    //
+    // Entry conditions (all must be true):
+    //   1. Bot is IDLE with no active quest work (HasQuestIntent = false)
+    //   2. Bot can fish (has SKILL_FISHING + a fishing pole equipped or in bags)
+    //   3. Either:
+    //        a. Bot has the STV Fishing Extravaganza pickup quest (8194), OR
+    //        b. It is Sunday (real server time tm_wday == 0) AND level >= 40
+    //           (the weekly tournament attracts high-level fishers to STV)
+    //   4. A stable 15%-per-hour seeded roll fires
+    //
+    // Once in TOURNAMENT, only fishing actions are allowed and fishing travel
+    // is guaranteed (see RequestTravelTargetAction::isAllowed). The session
+    // ends naturally when the bot has no committed task remaining.
+    //
+    // Note: HasQuestIntent() is a free function in this file's anonymous
+    // namespace — it is NOT a registered AI value, so we call it directly.
+    // -----------------------------------------------------------------------
+    if (bot->GetPlayerbotAI()->GetSession().state == SessionState::IDLE &&
+        !HasQuestIntent(bot) &&
+        AI_VALUE(bool, "can fish"))
+    {
+        // Check STV tournament eligibility
+        const bool hasTourneyQuest =
+            bot->GetQuestStatus(8194) == QUEST_STATUS_INCOMPLETE ||  // Extravaganza pickup
+            bot->GetQuestStatus(8193) == QUEST_STATUS_INCOMPLETE;    // Master Angler turn-in
+
+        time_t now = time(nullptr);
+        tm* lt = localtime(&now);
+        const bool isSunday    = (lt && lt->tm_wday == 0);
+        const bool highEnough  = (bot->GetLevel() >= 40);
+
+        const bool eligibleForTourney = hasTourneyQuest || (isSunday && highEnough);
+
+        if (eligibleForTourney)
+        {
+            // Stable per-hour roll — same bot makes same decision within a clock-hour
+            const uint32 seed = bot->GetGUIDLow() ^ static_cast<uint32>(now / 3600);
+            const bool wantsToFish = ((seed % 100) < 15);  // 15% per hour window
+
+            if (wantsToFish)
+            {
+                bot->GetPlayerbotAI()->SetSessionState(SessionState::TOURNAMENT);
+                ai->TellDebug(ai->GetMaster(),
+                    "Entering STV fishing tournament session.", "debug travel");
+            }
+        }
+    }
+
     if (AI_VALUE2(bool, "no active travel destinations", (getQualifier().empty() ? "quest" : getQualifier())))
         return false;
 
@@ -2351,7 +2540,15 @@ bool RequestTravelTargetAction::isAllowed() const
     case TravelDestinationPurpose::GatherSkinning:
     case TravelDestinationPurpose::GatherMining:
     case TravelDestinationPurpose::GatherHerbalism:
+        if (bot->GetGroup())
+            return urand(1, 100) < 50;
+        else
+            return urand(1, 100) < 90;
     case TravelDestinationPurpose::GatherFishing:
+        // Fishing travel is guaranteed during an active TOURNAMENT session
+        // so a bot that has committed to fishing doesn't randomly skip its spot.
+        if (bot->GetPlayerbotAI()->GetSession().state == SessionState::TOURNAMENT)
+            return true;
         if (bot->GetGroup())
             return urand(1, 100) < 50;
         else

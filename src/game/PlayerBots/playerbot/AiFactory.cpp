@@ -94,6 +94,17 @@ BotArchetype AiFactory::AssignArchetype(Player* player)
         return BotArchetype::REGULAR;
 
     std::mt19937 rng(player->GetGUIDLow());
+
+    // Archetype distribution (35/30/15/10/8/2 = CASUAL/REGULAR/RPG_QUEST/GRINDER/FARMER/HARDCORE).
+    //
+    // DESIGN NOTE — HARDCORE AS OVERLAY:
+    // Ideally HARDCORE would not be a separate archetype bucket but an overlay
+    // applied on top of any of the five main archetypes (~15% of all bots).
+    // A hardcore GRINDER plays very differently from a hardcore CASUAL.
+    // GetGrouperType() already applies a +10 leadership nudge for HARDCORE bots.
+    // Full archetype blending (merging HARDCORE weights into the base archetype)
+    // is a future refactor; for now the distribution is kept as-is to avoid
+    // cascading weight recalculations across the codebase.
     std::discrete_distribution<int> distribution({35, 30, 15, 10, 8, 2});
 
     return static_cast<BotArchetype>(distribution(rng));

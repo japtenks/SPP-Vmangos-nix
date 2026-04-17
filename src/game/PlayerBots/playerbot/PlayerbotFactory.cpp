@@ -3049,6 +3049,53 @@ void PlayerbotFactory::InitAllSkills()
     InitTradeSkills();
 }
 
+// Returns the maximum skill value achievable at the bot's current level
+// without visiting a rank-up trainer.  Used by trainer travel scoring to
+// decide whether to route the bot to a profession trainer.
+//
+//   Apprentice   cap 75   — learnable at level 1
+//   Journeyman   cap 150  — requires level 10
+//   Expert       cap 225  — requires level 20
+//   Artisan      cap 300  — requires level 35
+//
+uint32 PlayerbotFactory::GetProfessionRankCap(uint32 botLevel)
+{
+    if (botLevel >= 35) return 300;  // Artisan
+    if (botLevel >= 20) return 225;  // Expert
+    if (botLevel >= 10) return 150;  // Journeyman
+    return 75;                       // Apprentice
+}
+
+// Returns true when the bot has a profession that is capped at its current
+// rank tier and would benefit from a trainer visit to unlock the next tier.
+// Intended to be called from TrainerValues to score profession trainers.
+bool PlayerbotFactory::NeedsProfessionRankUp(Player* bot)
+{
+    if (!bot)
+        return false;
+
+    const uint32 cap = GetProfessionRankCap(bot->GetLevel());
+
+    static const uint32 kProfessions[] = {
+        SKILL_ALCHEMY, SKILL_BLACKSMITHING, SKILL_ENCHANTING,
+        SKILL_ENGINEERING, SKILL_LEATHERWORKING, SKILL_TAILORING,
+        SKILL_HERBALISM, SKILL_MINING, SKILL_SKINNING,
+        SKILL_COOKING, SKILL_FIRST_AID,
+    };
+
+    for (uint32 skill : kProfessions)
+    {
+        const uint32 current = bot->GetSkillValue(skill);
+        const uint32 maximum = bot->GetMaxSkillValue(skill);
+
+        // Bot has this skill, is at or near the rank cap, and the cap
+        // is below 300 (meaning there IS a higher rank to unlock).
+        if (current > 0 && maximum > 0 && current >= cap - 5 && cap < 300)
+            return true;
+    }
+    return false;
+}
+
 void PlayerbotFactory::InitTradeSkills()
 {
     uint16 firstSkill = sRandomPlayerbotMgr.GetValue(bot, "firstSkill");
@@ -3057,55 +3104,185 @@ void PlayerbotFactory::InitTradeSkills()
     {
         std::vector<uint32> firstSkills;
         std::vector<uint32> secondSkills;
-        switch (bot->GetClass())
+        // ------------------------------------------------------------------
+        // Profession identity system — each class/race/spec gets a coherent
+        // gathering + crafting pipeline that mirrors real player archetypes.
+        // Gathering skill feeds the craft skill for a long-term loop.
+        //
+        // Blacksmith sub-spec downstream:
+        //   Weaponsmith  → axe (Orc/Tauren heavy), sword (Human/Gnome),
+        //                   mace/hammer (Dwarf/Paladin feel)
+        //   Armorsmith   → no further split, specialises in plate
+        //
+        // Engineering spread: Gnomes always go Eng; ~20% of any other class
+        //   can roll Engineering instead of their default craft, representing
+        //   the real population of curious tinkerers across all races.
+        // ------------------------------------------------------------------
+
+        // Helper: read spec tab (0/1/2) from saved specNo
+        const uint32 specNo = sRandomPlayerbotMgr.GetValue(bot->GetGUIDLow(), "specNo");
+        const int specTab   = specNo > 0 ? static_cast<int>(specNo - 1) : AiFactory::GetPlayerSpecTab(bot);
+
+        // Gnomes: racial Engineering identity regardless of class.
+        // RACE_GOBLIN is not available in vanilla/SPP and never spawns —
+        // the isGoblin check from the previous patch is removed here.
+        const bool isGnome = (bot->GetRace() == RACE_GNOME);
+
+        // ~20% global Engineering wild-card: any non-Gnome bot can randomly
+        // pick Mining+Engineering regardless of class. Seeded by GUID so the
+        // same bot always makes the same choice across reloads.
+        const bool engineeringWildcard =
+            !isGnome && ((bot->GetGUIDLow() % 5) == 0);
+
+        if (isGnome || engineeringWildcard)
         {
-        case CLASS_WARRIOR:
-        case CLASS_PALADIN:
-#ifdef MANGOSBOT_TWO
-        case CLASS_DEATH_KNIGHT:
-#endif
-            firstSkills.push_back(SKILL_BLACKSMITHING);
+            // Gnome / Engineering wild-card → Mining (gather) + Engineering
+            firstSkills.push_back(SKILL_MINING);
             secondSkills.push_back(SKILL_ENGINEERING);
-            break;
-        case CLASS_SHAMAN:
-        case CLASS_DRUID:
-        case CLASS_HUNTER:
-        case CLASS_ROGUE:
-            firstSkills.push_back(SKILL_SKINNING);
-            firstSkills.push_back(SKILL_ENGINEERING);
-            secondSkills.push_back(SKILL_LEATHERWORKING);
-            break;
+        }
+        else
+        {
+            switch (bot->GetClass())
+            {
+            // ---------------------------------------------------------------
+            // Warriors & Paladins — Blacksmithing with sub-spec flavour
+            //   Tank spec  (Warrior tab 2, Paladin tab 1) → Armorsmith
+            //   DPS  spec  (Arms/Fury/Ret)                → Weaponsmith
+            //
+            // Weaponsmith downstream split (stored as secondSkill variant):
+            //   Axe   — thematic for Orc/Tauren, ~33%
+            //   Sword — thematic for Human/Gnome,  ~33%
+            //   Mace  — thematic for Dwarf/Paladin, ~34%
+            // The actual sub-spec spell is learned in InitSpecialSpells;
+            // here we just steer the firstSkill/secondSkill assignment.
+            // ---------------------------------------------------------------
+            case CLASS_WARRIOR:
+            case CLASS_PALADIN:
+#ifdef MANGOSBOT_TWO
+            case CLASS_DEATH_KNIGHT:
+#endif
+            {
+                firstSkills.push_back(SKILL_MINING);        // always gather
+                firstSkills.push_back(SKILL_BLACKSMITHING); // primary craft
+
+                const bool isTankSpec =
+                    (bot->GetClass() == CLASS_WARRIOR  && specTab == 2) ||
+                    (bot->GetClass() == CLASS_PALADIN  && specTab == 1);
+
+                if (isTankSpec)
+                {
+                    // Armorsmith path — no further downstream split
+                    secondSkills.push_back(SKILL_BLACKSMITHING);
+                }
+                else
+                {
+                    // Weaponsmith path — tag which weapon affinity via
+                    // a stable GUID-seeded roll (same bot = same choice)
+                    const uint32 weaponRoll = bot->GetGUIDLow() % 3;
+                    // 0 = axe-smith, 1 = sword-smith, 2 = mace-smith
+                    // All three still use SKILL_BLACKSMITHING as the craft;
+                    // the sub-spec spell distinction happens at InitSpecialSpells.
+                    secondSkills.push_back(SKILL_BLACKSMITHING);
+                    // Store the weapon affinity so InitSpecialSpells can read it
+                    // via sRandomPlayerbotMgr if needed in a future patch.
+                    sRandomPlayerbotMgr.SetValue(bot, "bsWeaponAffinity", weaponRoll);
+                }
+                break;
+            }
+
+            // ---------------------------------------------------------------
+            // Rogues: Skinning → LW primary; ~25% go Mining → Engineering
+            // (Combat rogues especially, for the gadgets)
+            // ---------------------------------------------------------------
+            case CLASS_ROGUE:
+                if (urand(0, 3) == 0)   // 25% Engineering rogues
+                {
+                    firstSkills.push_back(SKILL_MINING);
+                    secondSkills.push_back(SKILL_ENGINEERING);
+                }
+                else
+                {
+                    firstSkills.push_back(SKILL_SKINNING);
+                    secondSkills.push_back(SKILL_LEATHERWORKING);
+                }
+                break;
+
+            // ---------------------------------------------------------------
+            // Hunters: Skinning → LW primary; ~25% go Mining → Engineering
+            // (for ammo pouches and scopes — especially Dwarf hunters)
+            // ---------------------------------------------------------------
+            case CLASS_HUNTER:
+                if (urand(0, 3) == 0)   // 25% Engineering hunters
+                {
+                    firstSkills.push_back(SKILL_MINING);
+                    secondSkills.push_back(SKILL_ENGINEERING);
+                }
+                else
+                {
+                    firstSkills.push_back(SKILL_SKINNING);
+                    secondSkills.push_back(SKILL_LEATHERWORKING);
+                }
+                break;
+
+            // ---------------------------------------------------------------
+            // Shamans & Druids: nature theme → Herbalism + Alchemy primary.
+            // Feral druids sometimes go Skinning + LW (they kill beasts).
+            // ---------------------------------------------------------------
+            case CLASS_SHAMAN:
+            case CLASS_DRUID:
+                if (specTab == 1 && bot->GetClass() == CLASS_DRUID) // Feral
+                {
+                    firstSkills.push_back(SKILL_SKINNING);
+                    secondSkills.push_back(SKILL_LEATHERWORKING);
+                }
+                else
+                {
+                    firstSkills.push_back(SKILL_HERBALISM);
+                    secondSkills.push_back(SKILL_ALCHEMY);
+                }
+                break;
+
+            // ---------------------------------------------------------------
+            // Pure casters: Tailoring + Enchanting (cloth drops naturally).
+            // ~25% go Herbalism + Alchemy instead (potion brewers).
+            // ---------------------------------------------------------------
+            case CLASS_MAGE:
+            case CLASS_WARLOCK:
+            case CLASS_PRIEST:
+                if (urand(0, 3) == 0)   // 25% herb/alch casters
+                {
+                    firstSkills.push_back(SKILL_HERBALISM);
+                    secondSkills.push_back(SKILL_ALCHEMY);
+                }
+                else
+                {
+                    firstSkills.push_back(SKILL_TAILORING);
+                    secondSkills.push_back(SKILL_ENCHANTING);
+                }
+                break;
+
+            // Default fallback (covers any unhandled class)
+            default:
+                break;
+            }
         }
 
         if (firstSkills.empty() || secondSkills.empty())
         {
-            switch (urand(0, 6))
+            // Balanced fallback pool — same as original
+            switch (urand(0, 5))
             {
-            case 0:
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_ALCHEMY;
-                break;
-            case 1:
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_MINING;
-                break;
-            case 2:
-                firstSkill = SKILL_MINING;
-                secondSkill = SKILL_SKINNING;
-                break;
-            case 3:
-#ifdef MANGOSBOT_ZERO
-                firstSkill = SKILL_HERBALISM;
-                secondSkill = SKILL_SKINNING;
-#else
-                firstSkill = SKILL_JEWELCRAFTING;
-                secondSkill = SKILL_MINING;
-#endif
+            case 0: firstSkill = SKILL_HERBALISM;  secondSkill = SKILL_ALCHEMY;          break;
+            case 1: firstSkill = SKILL_HERBALISM;  secondSkill = SKILL_MINING;           break;
+            case 2: firstSkill = SKILL_MINING;     secondSkill = SKILL_SKINNING;         break;
+            case 3: firstSkill = SKILL_TAILORING;  secondSkill = SKILL_ENCHANTING;       break;
+            case 4: firstSkill = SKILL_SKINNING;   secondSkill = SKILL_LEATHERWORKING;   break;
+            default:firstSkill = SKILL_HERBALISM;  secondSkill = SKILL_SKINNING;         break;
             }
         }
         else
         {
-            firstSkill = firstSkills[urand(0, firstSkills.size() - 1)];
+            firstSkill  = firstSkills [urand(0, firstSkills.size()  - 1)];
             secondSkill = secondSkills[urand(0, secondSkills.size() - 1)];
         }
 

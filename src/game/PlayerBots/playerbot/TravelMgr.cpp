@@ -350,12 +350,17 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
         {
             if (info.GetBoolValue("can fight equal"))
             {
+                // Combat-capable bots: keep 5 slots free for group sharing
                 if (info.GetUint8Value("free quest log slots") < 5)
                     return false;
             }
             else
             {
-                if (info.GetUint8Value("free quest log slots") < 10)
+                // Non-combat / low-level bots: previously required 10 free
+                // slots, blocking pickup as soon as they had 10 quests (half
+                // the log).  Reduced to 3 — enough buffer for group sharing
+                // without strangling solo starter-zone bots.
+                if (info.GetUint8Value("free quest log slots") < 3)
                     return false;
             }
 
@@ -407,9 +412,19 @@ bool QuestRelationTravelDestination::IsActive(Player* bot, const PlayerTravelInf
         {
             const Quest* quest = GetQuestTemplate();
             if (quest && closestPoint && closestPoint->getMapId() == bot->GetMapId() &&
-                IsDestinationInBotsStarterZone(bot, closestPoint) &&
-                bot->CanTakeQuest(quest, false))
-                return true;
+                IsDestinationInBotsStarterZone(bot, closestPoint))
+            {
+                if (bot->CanTakeQuest(quest, false))
+                    return true;
+
+                // Proximity bypass: if the bot has already arrived at the NPC
+                // (within 20y) keep the destination active for one more tick so
+                // the RPG system can attempt RpgStartQuestAction before we
+                // re-queue. Without this, emote/item-gated quests (e.g. CLUCK!)
+                // cause an infinite travel → expire → re-travel loop.
+                if (closestPoint->distance(bot) < 20.0f)
+                    return true;
+            }
         }
 
         if (forceThisQuest)

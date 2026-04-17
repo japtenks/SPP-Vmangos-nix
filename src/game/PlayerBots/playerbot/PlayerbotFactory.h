@@ -54,6 +54,8 @@ public:
     static std::list<uint32> classQuestIds;
     static std::list<uint32> specialQuestIds;
     void InitSkills();
+    static uint32 GetProfessionRankCap(uint32 botLevel);
+    static bool   NeedsProfessionRankUp(Player* bot);
     void EnchantEquipment();
     void EquipGear() { InitEquipment(false, false); InitGems(); }
     void EquipGearBest() { return InitEquipment(false, false, false); }

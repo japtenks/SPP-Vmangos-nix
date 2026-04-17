@@ -1486,6 +1486,8 @@ bool UseRandomQuestItemAction::Execute(Event& event)
         Item* questItem = *itr;
 
         const ItemPrototype* proto = questItem->GetProto();
+
+        // --- Quest-starting items (drop-item quests) ---
         if (proto->StartQuest)
         {
             Quest const* qInfo = sObjectMgr.GetQuestTemplate(proto->StartQuest);
@@ -1495,52 +1497,76 @@ bool UseRandomQuestItemAction::Execute(Event& event)
                 break;
             }
         }
-        /*
-        uint32 spellId = proto->Spells[0].SpellId;
-        if (spellId)
-        {
-            SpellEntry const* spellInfo = sServerFacade.LookupSpellInfo(spellId);
 
-            std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, ("nearest npcs"));
-            for (auto& npc : npcs)
+        // --- Quest items used ON an NPC or GameObject ---
+        // Examples: "Plant the Banner", "Use the Blackrock Insignia on Vaelan",
+        //           "Use the Flame of Uzel", "Use the Voodoo Charm on Witch Doctor"
+        // Previously this whole block was commented out, so bots never used
+        // item-on-target quest items autonomously.
+        uint32 spellId = proto->Spells[0].SpellId;
+        if (spellId && !item)
+        {
+            // Try NPC targets first
+            std::list<ObjectGuid> npcs = AI_VALUE(std::list<ObjectGuid>, "nearest npcs");
+            for (auto& npcGuid : npcs)
             {
-                Unit* unit = ai->GetUnit(npc);
+                Unit* unit = ai->GetUnit(npcGuid);
+                if (!unit)
+                    continue;
+
                 if (ai->CanCastSpell(spellId, unit, 0, false))
                 {
-                    item = questItem;
+                    item      = questItem;
                     unitTarget = unit;
                     break;
                 }
             }
 
-            std::list<ObjectGuid> gos = AI_VALUE(std::list<ObjectGuid>, ("nearest game objects no los"));
-            for (auto& go : gos)
+            // Try GameObject targets if no NPC worked
+            if (!item)
             {
-                GameObject* gameObject = ai->GetGameObject(go);
-                GameObjectInfo const* goInfo = gameObject->GetGOInfo();
-                if (!goInfo->GetLockId())
-                    continue;
-
-                LockEntry const* lock = sLockStore.LookupEntry(goInfo->GetLockId());
-
-                for (uint8 i = 0; i < MAX_LOCK_CASE; ++i)
+                std::list<ObjectGuid> gos = AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
+                for (auto& goGuid : gos)
                 {
-                    if (!lock->Type[i])
-                        continue;
-                    if (lock->Type[i] != LOCK_KEY_ITEM)
+                    GameObject* gameObject = ai->GetGameObject(goGuid);
+                    if (!gameObject)
                         continue;
 
-                    if (lock->Index[i] == proto->ItemId)
+                    // Lock-key check: does this GO require this item to open?
+                    const uint32 lockId = gameObject->GetGOInfo()->GetLockId();
+                    if (lockId)
                     {
-                        item = questItem;
-                        goTarget = go;
-                        unitTarget = nullptr;
-                        break;
+                        LockEntry const* lock = sLockStore.LookupEntry(lockId);
+                        if (lock)
+                        {
+                            for (uint8 j = 0; j < MAX_LOCK_CASE; ++j)
+                            {
+                                if (lock->Type[j] != LOCK_KEY_ITEM)
+                                    continue;
+                                if (lock->Index[j] == proto->ItemId)
+                                {
+                                    item      = questItem;
+                                    goTarget   = gameObject;
+                                    unitTarget = nullptr;
+                                    break;
+                                }
+                            }
+                        }
                     }
-                }               
+
+                    // Spell-on-GO check: can we cast the item spell on this GO?
+                    if (!item && ai->CanCastSpell(spellId, gameObject, true))
+                    {
+                        item    = questItem;
+                        goTarget = gameObject;
+                        unitTarget = nullptr;
+                    }
+
+                    if (item)
+                        break;
+                }
             }
         }
-        */
     }
 
     bool success = false;

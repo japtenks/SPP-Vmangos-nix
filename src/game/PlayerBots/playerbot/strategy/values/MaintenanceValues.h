@@ -63,7 +63,16 @@ namespace ai
     {
     public:
         ShouldSellValue(PlayerbotAI* ai, std::string name = "should sell", int checkInterval = 2) : BoolCalculatedValue(ai, name , checkInterval) {}
-        virtual bool Calculate() override { return AI_VALUE(uint8, "bag space") > 80; };
+        virtual bool Calculate() override
+        {
+            const uint8 used = AI_VALUE(uint8, "bag space");
+            // Solo bots are often far from vendors when questing; trigger at
+            // 70% so they route to sell BEFORE hitting the emergency destroy
+            // path at 99%.  Grouped bots stay at 80% — they are likely near
+            // quest hubs and an early vendor run costs the group's time.
+            const uint8 threshold = bot->GetGroup() ? 80 : 70;
+            return used > threshold;
+        }
     };
 
     class CanSellValue : public BoolCalculatedValue

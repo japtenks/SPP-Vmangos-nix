@@ -423,6 +423,14 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
                 relevance *= 3.0f;
         }
 
+        // If this NPC is our current travel quest target but HasQuestInteraction()
+        // returned false (e.g. CLUCK! Chicken, item/emote-gated quests), the block
+        // above is skipped and relevance stays near 0, causing GetTargets to prune
+        // the NPC before RpgStartQuestAction can fire.
+        // Floor it at 50 so the NPC survives pruning and RPG can attempt interaction.
+        if (questTravelNpc && relevance < 50.0f)
+            relevance = 50.0f;
+
         //If we already had a different target with a relevance above 1 and this only has 1 (trivial) skip this target.
         if (!hasGoodRelevance || relevance > 1.0f)
         {

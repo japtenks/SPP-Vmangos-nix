@@ -686,8 +686,12 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
         //if item value is significantly higher than its vendor sell price and we actually have money to place the item on ah.
         uint32 ahMoney = AI_VALUE2(uint32, "free money for", (uint32)NeedMoneyFor::ah);
 
-        if(!ahMoney && AI_VALUE(uint8, "bag space") > 80)
-            return sellUsage;
+        // Match the solo/group-aware sell threshold from ShouldSellValue
+        {
+            const uint8 bagThreshold = bot->GetGroup() ? 80 : 70;
+            if (!ahMoney && AI_VALUE(uint8, "bag space") > bagThreshold)
+                return sellUsage;
+        }
 
         if (!IsMoreProfitableToSellToAHThanToVendor(proto, bot))
             return sellUsage;
@@ -713,8 +717,11 @@ if ((proto->Class == ITEM_CLASS_PROJECTILE ||
         if (ahPrice - depositCost - sellPrice < bot->GetMoney() / 500)
             return sellUsage; //Do not move to AH for items with less than 0.2% of bots gold markup.
 
-        if(depositCost > ahMoney && AI_VALUE(uint8, "bag space") > 80) 
-            return sellUsage; //We simply do not have the money to put this on AH.
+        {
+            const uint8 bagThreshold = bot->GetGroup() ? 80 : 70;
+            if (depositCost > ahMoney && AI_VALUE(uint8, "bag space") > bagThreshold)
+                return sellUsage; //We simply do not have the money to put this on AH.
+        }
 
         if(!item) 
             return ItemUsage::ITEM_USAGE_AH;   //We can't determine if this item is soulboud (yet) or broken so we assume we can AH this.      

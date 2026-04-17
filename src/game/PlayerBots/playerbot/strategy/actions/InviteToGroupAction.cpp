@@ -256,8 +256,95 @@ namespace ai
         return false;
     }
 
+    // Returns true if the bot has elite/dungeon quests it can't progress solo.
+    // Used to trigger group-seeking advertisement and temporarily open SOLO
+    // bots to accepting invites.
+    static bool HasStuckEliteQuests(Player* bot)
+    {
+        if (!bot || !bot->GetPlayerbotAI())
+            return false;
+
+        // Bot must be capable of fighting equal-level mobs but not bosses
+        // (i.e. solo but not yet in a group strong enough for elite content)
+        PlayerbotAI* ai = bot->GetPlayerbotAI();
+        AiObjectContext* ctx = ai->GetAiObjectContext();
+        if (!ctx->GetValue<bool>("can fight equal")->Get())
+            return false;
+        if (ctx->GetValue<bool>("can fight boss")->Get())
+            return false;  // already in a sufficient group
+
+        QuestStatusMap& questMap = bot->GetQuestStatusMap();
+        for (auto const& [questId, questStatus] : questMap)
+        {
+            if (questStatus.m_rewarded || questStatus.m_status == QUEST_STATUS_COMPLETE)
+                continue;
+
+            Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+            if (!quest)
+                continue;
+
+            if (quest->GetType() == QUEST_TYPE_ELITE ||
+                quest->GetType() == QUEST_TYPE_DUNGEON ||
+                quest->GetType() == QUEST_TYPE_RAID)
+                return true;
+        }
+        return false;
+    }
+
     bool InviteNearbyToGroupAction::Execute(Event& event)
     {
+        // ---------------------------------------------------------------
+        // Elite-quest group-seeking advertisement.
+        // If we have stuck elite/dungeon quests and are not yet in a
+        // suitable group, broadcast in say/general to attract a leader.
+        // Uses a stable per-30-min seeded roll to avoid spam.
+        // ---------------------------------------------------------------
+        if (HasStuckEliteQuests(bot) && !bot->GetGroup())
+        {
+            const uint32 seed = bot->GetGUIDLow() ^ static_cast<uint32>(time(nullptr) / 1800);
+            if ((seed % 100) < 30)  // 30% per 30-min window
+            {
+                AreaTableEntry const* zone = ai->GetCurrentZone();
+                std::string zoneName = zone ? ai->GetLocalizedAreaName(zone) : "this area";
+
+                // Collect elite quest names from log (up to 2)
+                std::vector<std::string> eliteQuestNames;
+                QuestStatusMap& questMap = bot->GetQuestStatusMap();
+                for (auto const& [questId, questStatus] : questMap)
+                {
+                    if (questStatus.m_rewarded || eliteQuestNames.size() >= 2)
+                        continue;
+                    Quest const* quest = sObjectMgr.GetQuestTemplate(questId);
+                    if (!quest) continue;
+                    if (quest->GetType() == QUEST_TYPE_ELITE ||
+                        quest->GetType() == QUEST_TYPE_DUNGEON)
+                        eliteQuestNames.push_back(quest->GetTitle());
+                }
+
+                if (!eliteQuestNames.empty())
+                {
+                    std::string questList = eliteQuestNames[0];
+                    if (eliteQuestNames.size() > 1)
+                        questList += " and " + eliteQuestNames[1];
+
+                    std::ostringstream msg;
+                    msg << "LFG - need group for " << questList;
+                    if (!zoneName.empty())
+                        msg << " in " << zoneName;
+
+                    // Say in the zone channel if in a city, otherwise local say
+                    AreaTableEntry const* area = ai->GetCurrentArea();
+                    bool inCity = area && (area->Flags & AREA_FLAG_CAPITAL);
+                    if (inCity)
+                        bot->Say(msg.str().c_str(),
+                            bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH);
+                    else
+                        bot->Yell(msg.str().c_str(),
+                            bot->GetTeam() == ALLIANCE ? LANG_COMMON : LANG_ORCISH);
+                }
+            }
+        }
+
         if (!bot->GetGroup())  //Select a random formation to copy.
         {
             std::vector<std::string> formations = { "melee","queue","chaos","circle","line","shield","arrow","near","far"};

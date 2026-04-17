@@ -282,7 +282,40 @@ std::vector<TrainerSpell const*> TrainableSpellsValue::Calculate()
 #else
                 if (bot->GetLevel() < 10 && sSpellMgr.IsProfessionSpell(trainerSpell->spell) && sSpellMgr.GetSpellRank(trainerSpell->spell) == 1)
 #endif
-                    continue;
+                {
+                    // -------------------------------------------------------
+                    // Opportunistic fishing exception:
+                    //   • Always learn if the bot is level >= 40 and hasn't
+                    //     picked up Fishing yet (long-term idle activity).
+                    //   • 10 % random chance at any level — seeded by GUID
+                    //     for stability within a session.
+                    // Only the Fishing Apprentice spell (rank 1, skill 356)
+                    // bypasses the skip.  All other rank-1 professions are
+                    // still skipped normally.
+                    // -------------------------------------------------------
+                    SpellLearnSkillNode const* learnSkill =
+                        sSpellMgr.GetSpellLearnSkill(trainerSpell->spell);
+                    const bool isFishingSpell =
+                        learnSkill && learnSkill->skill == SKILL_FISHING;
+
+                    if (isFishingSpell && !bot->HasSkill(SKILL_FISHING))
+                    {
+                        const bool alwaysLearn   = (bot->GetLevel() >= 40);
+                        // Stable 10 % roll: use bot GUID + current hour so it
+                        // re-rolls occasionally but doesn't flip every tick.
+                        const uint32 seed = bot->GetGUIDLow() ^
+                            static_cast<uint32>(time(nullptr) / 3600);
+                        const bool chanceLearn   = ((seed % 10) == 0);
+
+                        if (!alwaysLearn && !chanceLearn)
+                            continue;   // still skip — roll didn't fire
+                        // else: fall through and add to trainableSpells
+                    }
+                    else
+                    {
+                        continue;   // normal skip for non-fishing professions
+                    }
+                }
 
                 trainableSpells.push_back(trainerSpell);
             }
@@ -379,6 +412,48 @@ std::vector<int32> AvailableTrainersValue::Calculate()
 
                     if(std::find(retTrainers.begin(), retTrainers.end(), trainer) == retTrainers.end())
                         retTrainers.push_back(trainer);
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Profession rank-up scoring
+    // When the bot has a profession skill capped at its current tier
+    // (e.g. Mining at 75 ready for Journeyman), boost any tradeskill trainer
+    // that teaches the next rank of that profession so it rises to the top.
+    // -----------------------------------------------------------------------
+    if (PlayerbotFactory::NeedsProfessionRankUp(bot))
+    {
+        trainableSpellMap* spellMap2 = GAI_VALUE(trainableSpellMap*, "trainable spell map");
+        for (auto& [trainerType2, spellReqList2] : *spellMap2)
+        {
+            if (trainerType2 != TRAINER_TYPE_TRADESKILLS)
+                continue;
+
+            for (auto& [requirement2, trainerSpellList2] : spellReqList2)
+            {
+                for (auto& [trainerSpell2, trainers2] : trainerSpellList2)
+                {
+                    // Only rank-up spells (rank >= 2: Journeyman, Expert, Artisan)
+                    if (sSpellMgr.GetSpellRank(trainerSpell2->spell) < 2)
+                        continue;
+
+                    TrainerSpellState state2 = bot->GetTrainerSpellState(trainerSpell2);
+                    if (state2 != TRAINER_SPELL_GREEN)
+                        continue;
+
+                    for (int32 trainer2 : trainers2)
+                    {
+                        // Boost: rank-up trainers score 0.90 (very high —
+                        // comparable to a known weapon-skill trainer).
+                        trainerKnowledgeScores[trainer2] =
+                            std::max(trainerKnowledgeScores[trainer2], 0.90f);
+
+                        if (std::find(retTrainers.begin(), retTrainers.end(), trainer2)
+                                == retTrainers.end())
+                            retTrainers.push_back(trainer2);
+                    }
                 }
             }
         }
