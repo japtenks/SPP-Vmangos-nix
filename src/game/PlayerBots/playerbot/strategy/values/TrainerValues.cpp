@@ -1,5 +1,6 @@
 
 #include "playerbot/playerbot.h"
+#include "playerbot/PlayerbotFactory.h"
 #include "playerbot/ServerSharedKnowledge.h"
 #include "TrainerValues.h"
 #include "SharedValueContext.h"
