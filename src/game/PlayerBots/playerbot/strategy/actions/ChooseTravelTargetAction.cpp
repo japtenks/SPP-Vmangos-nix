@@ -739,6 +739,13 @@ namespace
         if (!bot || !destination || destination->GetPurpose() != TravelDestinationPurpose::QuestGiver)
             return false;
 
+        // Block quests bots can never satisfy autonomously (item/emote-gated).
+        static const std::unordered_set<uint32> kUnsatisfiableQuests = {
+            3861, // CLUCK! -- requires Special Chicken Feed in inventory
+        };
+        if (kUnsatisfiableQuests.count(destination->GetQuestId()))
+            return false;
+
         Quest const* quest = sObjectMgr.GetQuestTemplate(destination->GetQuestId());
         if (!quest)
             return false;

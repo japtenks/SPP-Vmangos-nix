@@ -3083,11 +3083,36 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot)
 
 void RandomPlayerbotMgr::InstaRandomize(Player* bot)
 {
+    // Snapshot pre-randomise state so we know if this is a brand-new
+    // character that hasn't logged in before.
+    const bool wasNew = (bot->GetTotalPlayedTime() == 0);
+    const uint8 race   = bot->GetRace();
+    const uint8 cls    = bot->GetClass();
+
     sRandomPlayerbotMgr.Randomize(bot);
 
-    if(bot->GetLevel() > sWorld.getConfig(CONFIG_UINT32_START_PLAYER_LEVEL))
-        sRandomPlayerbotMgr.RandomTeleportForLevel(bot, false);
+    if (bot->GetLevel() > sWorld.getConfig(CONFIG_UINT32_START_PLAYER_LEVEL))
+    {
+        if (wasNew)
+        {
+            // Brand-new bots start in their racial starting area, not in
+            // whatever level-2 zone RandomTeleportForLevel happens to pick
+            // (which is typically Goldshire rather than Northshire).
+            PlayerInfo const* info = sObjectMgr.GetPlayerInfo(race, cls);
+            if (info)
+                bot->TeleportTo(info->mapId,
+                    info->positionX, info->positionY, info->positionZ,
+                    info->orientation);
+            else
+                sRandomPlayerbotMgr.RandomTeleportForLevel(bot, false);
+        }
+        else
+        {
+            sRandomPlayerbotMgr.RandomTeleportForLevel(bot, false);
+        }
+    }
 }
+// [patch_bot_start_position applied]
 
 void RandomPlayerbotMgr::Randomize(Player* bot)
 {

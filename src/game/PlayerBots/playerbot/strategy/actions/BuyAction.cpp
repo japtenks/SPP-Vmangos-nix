@@ -224,7 +224,7 @@ bool BuyAction::Execute(Event& event)
                         // so future bots know to include this vendor in shopping trips.
                         sServerSharedKnowledge.RecordVendorGearItem(
                             pCreature->GetEntry(),
-                            bot->getClass(),
+                            bot->GetClass(),
                             tItem->item,
                             bot->GetMapId(),
                             GetKnowledgeCityId(bot),
