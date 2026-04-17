@@ -75,6 +75,12 @@ namespace
             << " dialog=" << dialogStatus;
 
         TellRpgTrace(ai, ai->GetMaster(), out.str());
+
+        // Also emit to the server log at DEBUG level so the failure
+        // reason is visible even when the bot has no real master.
+        sLog.Out(LOG_BASIC, LOG_LVL_DEBUG,
+            "[rpg_quest] bot=%s %s",
+            bot ? bot->GetName() : "?", out.str().c_str());
     }
 }
 
@@ -244,6 +250,14 @@ bool RpgStartQuestAction::isUseful()
     if (!worldObject || !bot->CanInteractWithQuestGiver(worldObject))
     {
         TraceQuestStartDebug(ai, rpg.get(), "interact", true, true);
+
+        // Break the deadlock: when the NPC is dead/respawning or
+        // temporarily uninteractable, isUseful() would keep returning
+        // false every tick while rpg stay fires instead, parking the bot
+        // at the corpse for the full respawn timer (~2 min).  Dropping
+        // the RPG target lets the bot pick a different quest giver or
+        // re-select this one once it becomes interactable again.
+        RESET_AI_VALUE(GuidPosition, "rpg target");
         return false;
     }
 
@@ -1064,3 +1078,5 @@ bool RpgSpellClickAction::Execute(Event& event)
     
     return result;
 }
+
+// [patch_rpg_quest_interact applied]
