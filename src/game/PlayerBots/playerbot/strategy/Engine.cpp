@@ -120,6 +120,28 @@ void Engine::Init()
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Engine chain file logger (AiPlayerbot.EngineDebugLog)
+// One CSV line per action evaluation event, written to EngineDebugLogFile.
+// ---------------------------------------------------------------------------
+static void LogEngineChain(PlayerbotAI* ai, const std::string& actionName,
+    float relevance, const char* stage, const std::string& extra = "")
+{
+    if (!sPlayerbotAIConfig.engineDebugLog || sPlayerbotAIConfig.engineDebugLogFile.empty())
+        return;
+    if (!ai || !ai->GetBot())
+        return;
+    std::ostringstream _ecl;
+    _ecl << sPlayerbotAIConfig.GetTimestampStr()
+         << ",bot=" << ai->GetBot()->GetName()
+         << ",action=" << actionName
+         << ",rel=" << std::fixed << std::setprecision(3) << relevance
+         << ",stage=" << stage;
+    if (!extra.empty())
+        _ecl << "," << extra;
+    sPlayerbotAIConfig.log(sPlayerbotAIConfig.engineDebugLogFile, "%s", _ecl.str().c_str());
+}
+
 bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
 {
     LogAction("--- AI Tick ---");
@@ -195,6 +217,8 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                     if (!ai->IsActionAllowedInSession(action->getName(), state))
                     {
                         LogAction("A:%s - BLOCKED_BY_SESSION", action->getName().c_str());
+                        LogEngineChain(ai, action->getName(), relevance, "SESSION_BLOCKED",
+                            "bot_state=" + std::to_string(static_cast<int>(state)));
                     }
                     else
                     {
@@ -217,6 +241,8 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                             if (!relevance)
                             {
                                 LogAction("Multiplier %s made action %s useless", multiplier->getName().c_str(), action->getName().c_str());
+                                LogEngineChain(ai, action->getName(), relevance, "MULTIPLIER_ZEROED",
+                                    "multiplier=" + std::string(multiplier->getName()));
                                 break;
                             }
                         }
@@ -235,6 +261,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         LogAction("A:%s - PREREQ", action->getName().c_str());
                         if (MultiplyAndPush(actionNode->getPrerequisites(), relevance + 0.02, false, event, "prereq"))
                         {
+                            LogEngineChain(ai, action->getName(), relevance, "PREREQ_PUSHED");
                             PushAgain(actionNode, relevance + 0.01, event);
                             continue;
                         }
@@ -259,6 +286,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         if (actionExecuted)
                         {
                             LogAction("A:%s - OK", action->getName().c_str());
+                            LogEngineChain(ai, action->getName(), relevance, "OK");
                             MultiplyAndPush(actionNode->getContinuers(), 0, false, event, "cont");
                             lastRelevance = relevance;
                             delete actionNode;
@@ -267,6 +295,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         else
                         {
                             LogAction("A:%s - FAILED", action->getName().c_str());
+                            LogEngineChain(ai, action->getName(), relevance, "FAILED");
                             MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
                         }
                     }
@@ -295,6 +324,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                             }
                         }
                         LogAction("A:%s - IMPOSSIBLE", action->getName().c_str());
+                        LogEngineChain(ai, action->getName(), relevance, "IMPOSSIBLE");
                         MultiplyAndPush(actionNode->getAlternatives(), relevance + 0.03, false, event, "alt");
                     }
                 }
@@ -324,6 +354,7 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                     }
                     lastRelevance = relevance;
                     LogAction("A:%s - USELESS", action->getName().c_str());
+                    LogEngineChain(ai, action->getName(), relevance, "USELESS");
                 }
             }
             delete actionNode;
@@ -867,3 +898,5 @@ void Engine::LogValues()
     std::string text = ai->GetAiObjectContext()->FormatValues();
     sLog.Out(LOG_BASIC, LOG_LVL_DEBUG,  "Values for %s: %s", bot->GetName(), text.c_str());
 }
+
+/* [engine_debug_log:src/game/PlayerBots/playerbot/strategy/Engine.cpp] */

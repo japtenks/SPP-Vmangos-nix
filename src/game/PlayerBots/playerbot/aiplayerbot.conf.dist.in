@@ -6,6 +6,24 @@
 ConfVersion=2020072501
 
 ###################################################################################################
+# ENGINE CHAIN DEBUG LOGGING
+#
+# When enabled, every action evaluation in the AI engine loop is written as
+# a CSV line to EngineDebugLogFile (relative to the server's LogsDir).
+#
+# Format:
+#   <timestamp>,bot=<name>,action=<name>,rel=<n.nnn>,stage=<STAGE>[,<extra>]
+#
+# Stages: SESSION_BLOCKED  USELESS  MULTIPLIER_ZEROED  PREREQ_PUSHED
+#         IMPOSSIBLE  FAILED  OK
+#
+# 0 = disabled (default), 1 = enabled
+###################################################################################################
+
+AiPlayerbot.EngineDebugLog = 0
+AiPlayerbot.EngineDebugLogFile = "engine_debug.log"
+
+###################################################################################################
 # RESET / CLEANUP
 #
 # One-shot cleanup flags. Set a flag to 1 for the next restart only, then return it to 0.
@@ -4670,3 +4688,5 @@ AiPlayerbot.GearProgressionSystem.5.11.3.15 = 22988	# Main Hand
 AiPlayerbot.GearProgressionSystem.5.11.3.16 = 13385	# Off Hand
 AiPlayerbot.GearProgressionSystem.5.11.3.17 = 23198	# Ranged
 AiPlayerbot.GearProgressionSystem.5.11.3.18 = 5976	# Tabard
+
+/* [engine_debug_log:src/game/PlayerBots/playerbot/aiplayerbot.conf.dist.in] */

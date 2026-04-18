@@ -1027,9 +1027,22 @@ namespace
 
     bool HasPendingTravelDestinations(FutureDestinations* futureDestinations)
     {
+        // All travel futures use std::launch::deferred (LaunchTravelDestinations).
+        // For deferred futures, wait_for() returns future_status::deferred (not
+        // future_status::ready) until after .get() is called.  The old check
+        //   != ready
+        // was therefore always true, making HasPendingTravelDestinations() return
+        // true for every deferred future — even orphaned ones never consumed after
+        // a combat interrupt cleared TRAVEL_STATUS_PREPARE before
+        // ChooseTravelTargetAction could call .get().
+        //
+        // Correct check: only block re-launch for futures that are genuinely
+        // in-flight on another thread (future_status::timeout).  Deferred futures
+        // are synchronous-on-demand and always instantly consumable; they must
+        // NOT prevent a new fetch from being launched.
         return futureDestinations &&
             futureDestinations->valid() &&
-            futureDestinations->wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+            futureDestinations->wait_for(std::chrono::seconds(0)) == std::future_status::timeout;
     }
 
     template <typename Work>
@@ -3516,3 +3529,5 @@ bool FocusTravelTargetAction::Execute(Event& event)
     
     return true;
 }
+
+// [patch_travel_deferred_future applied]

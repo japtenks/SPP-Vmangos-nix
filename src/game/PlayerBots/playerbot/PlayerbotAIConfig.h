@@ -368,6 +368,10 @@ public:
     float jumpVSpeed;
     float jumpHSpeed;
 
+    // Engine action chain file logging (AiPlayerbot.EngineDebugLog)
+    bool engineDebugLog;
+    std::string engineDebugLogFile;
+
     std::mutex m_logMtx;
 
     std::list<std::string> allowedLogFiles;
@@ -432,3 +436,5 @@ private:
 };
 
 #define sPlayerbotAIConfig MaNGOS::Singleton<PlayerbotAIConfig>::Instance()
+
+/* [engine_debug_log:src/game/PlayerBots/playerbot/PlayerbotAIConfig.h] */

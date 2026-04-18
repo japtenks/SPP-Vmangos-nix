@@ -449,6 +449,11 @@ bool PlayerbotAIConfig::Initialize()
     LoadListString<std::list<std::string>>(config.GetStringDefault("AiPlayerbot.AllowedLogFiles", ""), allowedLogFiles);
     LoadListString<std::list<std::string>>(config.GetStringDefault("AiPlayerbot.DebugFilter", "add gathering loot,check values,emote,check mount state,jump"), debugFilter);
 
+    engineDebugLog     = config.GetBoolDefault("AiPlayerbot.EngineDebugLog", false);
+    engineDebugLogFile = config.GetStringDefault("AiPlayerbot.EngineDebugLogFile", "engine_debug.log");
+    if (engineDebugLog && !engineDebugLogFile.empty())
+        allowedLogFiles.push_back(engineDebugLogFile);
+
     worldBuffs.clear();
 
     //Get all config values starting with AiPlayerbot.WorldBuff
@@ -1423,3 +1428,5 @@ void PlayerbotAIConfig::LoadLLMDefaultPrompts(const std::string& fileName)
 
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "Loaded %u LLM character personalities from %s", loaded, fileName.c_str());
 }
+
+/* [engine_debug_log:src/game/PlayerBots/playerbot/PlayerbotAIConfig.cpp] */

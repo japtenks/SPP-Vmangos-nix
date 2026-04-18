@@ -593,6 +593,18 @@ namespace
 
     bool IsMaintenanceAction(const std::string& actionName)
     {
+        // These three RPG actions must NEVER be gated by session state:
+        //   rpg cancel     — the only action that resets the RPG target;
+        //                    blocking it causes the "useless" deadlock loop
+        //                    (rpg sell useless x N, rpg cancel useless x N)
+        //                    that parks the bot for the full session duration.
+        //   rpg start/end quest — quest acceptance/completion is quest activity
+        //                    and must be allowed while in QUESTING state.
+        if (actionName == "rpg cancel" ||
+            actionName == "rpg start quest" ||
+            actionName == "rpg end quest")
+            return false;
+
         return actionName == "check mail" ||
                StartsWithActionCategory(actionName, "rpg ") ||
                actionName == "rpg" ||
@@ -9162,3 +9174,5 @@ bool PlayerbotAI::HandleSpellClick(ObjectGuid guid)
 #endif
     return false;
 }
+
+// [patch_rpg_session_deadlock applied]
