@@ -1707,6 +1707,28 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         if (futureTravelPurpose == "quest")
             LogStarterQuestNoTargetDiagnostics(ai, requester, bot, destinationList);
         ai->TellDebug(ai->GetMaster(), "No target set", "debug travel");
+
+        // Persistent failure counter.  The "no active travel destinations" flag
+        // is cleared by too many independent paths to reliably suppress
+        // re-requests between engine calls.  Track consecutive SetBestTarget
+        // failures per purpose with a manual-int counter instead.  After 3
+        // failures force a 30-second COOLDOWN so all downstream travel actions
+        // (choose, refresh, request, move-to) are suppressed until the bot has
+        // time to reach a different area or the world state changes.
+        const std::string failKey = "travel choose fail count::" + futureTravelPurpose;
+        const int failCount = AI_VALUE2(int, "manual int", failKey) + 1;
+        SET_AI_VALUE2(int, "manual int", failKey, failCount);
+        if (failCount >= 3)
+        {
+            SET_AI_VALUE2(int, "manual int", failKey, 0);
+            ai->TellDebug(ai->GetMaster(),
+                "Travel choose failed " + std::to_string(failCount) +
+                " times for purpose '" + futureTravelPurpose +
+                "'; forcing 30s cooldown.", "debug travel");
+            travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_COOLDOWN);
+            travelTarget->SetExpireIn(30000);
+        }
+
         return false;
     }
 
@@ -1832,6 +1854,13 @@ void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
     }
 
     //Actually apply the new target to the travel target used by the bot.
+    // Reset the SetBestTarget failure counter for this purpose so the
+    // backoff window is per-burst-of-failures, not cumulative.
+    {
+        const std::string failKey = "travel choose fail count::" +
+            AI_VALUE2(std::string, "manual string", "future travel purpose");
+        SET_AI_VALUE2(int, "manual int", failKey, 0);
+    }
     oldTarget->CopyTarget(newTarget);
 
     if (oldTarget->IsForced()) //Make sure travel goes into cooldown after getting to the destination.
@@ -3531,3 +3560,5 @@ bool FocusTravelTargetAction::Execute(Event& event)
 }
 
 // [patch_travel_deferred_future applied]
+
+// [patch_travel_choose_failed_backoff applied]

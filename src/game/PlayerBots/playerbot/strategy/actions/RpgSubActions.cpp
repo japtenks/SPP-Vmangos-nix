@@ -209,15 +209,31 @@ bool RpgEmoteAction::Execute(Event& event)
 
 bool RpgCancelAction::Execute(Event& event)
 {
-    rpg->OnCancel();  
+    rpg->OnCancel();
 
-    if (!urand(0,3) || AI_VALUE(GuidPosition, "rpg target").GetEntry() != AI_VALUE(TravelTarget*, "travel target")->GetEntry() || AI_VALUE(TravelTarget*, "travel target")->GetStatus() != TravelStatus::TRAVEL_STATUS_WORK) //1 out of 4 to ignore current travel target after cancel.
-        AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target")); 
+    // Count cancels per NPC entry (not per-GUID: if one spawn of an entry
+    // is unreachable, all spawns of that entry in the zone are equally so).
+    // After 2 cancels on the same entry, unconditionally blacklist it so the
+    // bot stops wasting cycles re-selecting the same unworkable target.
+    // The old 25% random gate is replaced by this deterministic counter;
+    // the travel-target mismatch condition is preserved as a fast-path that
+    // still blacklists immediately when the bot was heading somewhere else.
+    const uint32 targetEntry = AI_VALUE(GuidPosition, "rpg target").GetEntry();
+    const std::string cancelCountKey = "rpg cancel count::" + std::to_string(targetEntry);
+    const int cancelCount = AI_VALUE2(int, "manual int", cancelCountKey) + 1;
+    SET_AI_VALUE2(int, "manual int", cancelCountKey, cancelCount);
 
-    RESET_AI_VALUE(GuidPosition, "rpg target"); rpg->AfterExecute(false, false, ""); DoDelay(); 
+    if (cancelCount >= 2 ||
+        AI_VALUE(GuidPosition, "rpg target").GetEntry() != AI_VALUE(TravelTarget*, "travel target")->GetEntry() ||
+        AI_VALUE(TravelTarget*, "travel target")->GetStatus() != TravelStatus::TRAVEL_STATUS_WORK)
+        AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").insert(AI_VALUE(GuidPosition, "rpg target"));
+
+    RESET_AI_VALUE(GuidPosition, "rpg target");
+    rpg->AfterExecute(false, false, "");
+    DoDelay();
     RESET_AI_VALUE2(int32, "manual int", "rpg ai chat line");
     RESET_AI_VALUE2(std::string, "manual string", "llmcontext rpg");
-    
+
     return true;
 };
 
@@ -1080,3 +1096,5 @@ bool RpgSpellClickAction::Execute(Event& event)
 }
 
 // [patch_rpg_quest_interact applied]
+
+// [patch_rpg_cancel_counter applied]
