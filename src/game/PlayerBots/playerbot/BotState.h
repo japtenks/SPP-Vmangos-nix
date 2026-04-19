@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Common.h"
+
 enum class BotState : uint8
 {
     BOT_STATE_COMBAT = 0,
