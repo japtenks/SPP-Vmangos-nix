@@ -76,6 +76,7 @@ namespace ai
     public:
         AutoLootRollAction(PlayerbotAI* ai, std::string name = "auto loot roll") : RollAction(ai, name) {}
         virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
         virtual bool isPossible() override;
 
 #ifdef GenerateBotHelp

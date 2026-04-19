@@ -1826,6 +1826,9 @@ bool ChooseTravelTargetAction::isUseful()
     if (!AI_VALUE(bool, "can move around"))
         return false;
 
+    if (AI_VALUE(TravelTarget*, "travel target")->GetStatus() != TravelStatus::TRAVEL_STATUS_PREPARE)
+        return false;
+
     if (AI_VALUE(bool, "travel target active"))
         return false;
 

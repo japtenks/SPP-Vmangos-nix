@@ -358,6 +358,16 @@ bool AutoLootRollAction::Execute(Event& event)
     return RollOnItemInSlot(vote, currentRoll->first, currentRoll->second);
 }
 
+bool AutoLootRollAction::isUseful()
+{
+    if (!bot->GetGroup())
+        return false;
+
+    LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
+    ActiveRolls::CleanUp(bot, lootRolls);
+    return !lootRolls.empty() && AI_VALUE(uint8, "bag space") < 100;
+}
+
 bool AutoLootRollAction::isPossible()
 {
     if (!bot->GetGroup())

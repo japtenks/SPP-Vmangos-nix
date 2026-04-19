@@ -218,6 +218,7 @@ namespace ai
                 creators["low ammo"] = [](PlayerbotAI* ai) { return new HunterLowAmmoTrigger(ai); };
                 creators["no ammo"] = [](PlayerbotAI* ai) { return new HunterNoAmmoTrigger(ai); };
                 creators["has ammo"] = [](PlayerbotAI* ai) { return new HunterHasAmmoTrigger(ai); };
+                creators["call pet"] = [](PlayerbotAI* ai) { return new CallPetTrigger(ai); };
                 creators["switch to melee"] = [](PlayerbotAI* ai) { return new SwitchToMeleeTrigger(ai); };
                 creators["switch to ranged"] = [](PlayerbotAI* ai) { return new SwitchToRangedTrigger(ai); };
                 creators["feign death"] = [](PlayerbotAI* ai) { return new FeignDeathTrigger(ai); };
@@ -341,4 +342,3 @@ HunterAiObjectContext::HunterAiObjectContext(PlayerbotAI* ai) : AiObjectContext(
     actionContexts.Add(new ai::hunter::AiObjectContextInternal());
     triggerContexts.Add(new ai::hunter::TriggerFactoryInternal());
 }
-

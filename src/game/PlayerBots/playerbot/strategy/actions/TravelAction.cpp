@@ -16,12 +16,14 @@ using namespace MaNGOS;
 bool TravelAction::Execute(Event& event)
 {    
     TravelTarget * target = AI_VALUE(TravelTarget *, "travel target");
+    if (!target)
+        return false;
     
     target->CheckStatus();     
 
     SET_AI_VALUE2(time_t, "manual time", "next travel check", time(0) + 5);
 
-    return false;
+    return true;
 }
 
 bool TravelAction::isUseful()

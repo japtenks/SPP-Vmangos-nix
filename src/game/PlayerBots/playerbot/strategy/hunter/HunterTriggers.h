@@ -4,6 +4,23 @@
 
 namespace ai
 {
+    inline bool HasCallableHunterPet(PlayerbotAI* ai)
+    {
+        Player* bot = ai->GetBot();
+        if (!bot || bot->GetPet() || bot->IsMounted())
+            return false;
+
+        auto queryResult = CharacterDatabase.PQuery(
+            "SELECT id, entry, owner_guid "
+            "FROM character_pet WHERE owner_guid = '%u' AND (slot = '%u' OR slot > '%u') ",
+            bot->GetGUIDLow(), PET_SAVE_AS_CURRENT, PET_SAVE_LAST_STABLE_SLOT);
+        if (!queryResult)
+            return false;
+
+        Field* fields = queryResult->Fetch();
+        return fields && sObjectMgr.GetCreatureTemplate(fields[1].GetUInt32());
+    }
+
     HAS_AURA_TRIGGER_TIME(FeignDeathTrigger, "feign death", 2);
 
     BEGIN_TRIGGER(HunterNoStingsActiveTrigger, Trigger)
@@ -13,6 +30,12 @@ namespace ai
     {
     public:
         AspectOfTheHawkTrigger(PlayerbotAI* ai) : BuffTrigger(ai, "aspect of the hawk") {}
+
+        bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", "aspect of the hawk");
+            return spellId && bot->HasSpell(spellId) && BuffTrigger::IsActive();
+        }
     };
 
     class AspectOfTheWildTrigger : public BuffTrigger
@@ -59,6 +82,18 @@ namespace ai
         bool IsActive() override
         {
             return BuffTrigger::IsActive() && !ai->HasAura("aspect of the hawk", bot);
+        }
+    };
+
+    class CallPetTrigger : public Trigger
+    {
+    public:
+        CallPetTrigger(PlayerbotAI* ai) : Trigger(ai, "call pet", 30) {}
+
+        bool IsActive() override
+        {
+            const uint32 spellId = AI_VALUE2(uint32, "spell id", "call pet");
+            return spellId && bot->HasSpell(spellId) && HasCallableHunterPet(ai);
         }
     };
 
@@ -378,4 +413,3 @@ private:
         }
     };
 }
-
