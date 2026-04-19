@@ -17,6 +17,48 @@ using namespace MaNGOS;
 
 using namespace ai;
 
+namespace
+{
+    static std::string SanitizeEngineLogField(std::string text)
+    {
+        std::replace(text.begin(), text.end(), ',', ';');
+        return text;
+    }
+
+    void TraceLootReason(PlayerbotAI* ai, Player* requester, std::string const& action, std::string const& reason, WorldObject* wo = nullptr)
+    {
+        if (!ai || !ai->GetBot())
+            return;
+
+        // Keep loot failure instrumentation in the engine debug log so we can
+        // analyze scheduler behavior without turning every trace into player chat.
+        std::ostringstream out;
+        out << "[PBTRACE] " << action << " " << reason;
+
+        if (wo)
+            out << " obj=" << ChatHelper::formatWorldobject(wo);
+
+        if (ai->HasStrategy("debug loot", BotState::BOT_STATE_NON_COMBAT))
+            ai->TellDebug(requester ? requester : ai->GetMaster(), out.str(), "debug loot");
+
+        if (!sPlayerbotAIConfig.engineDebugLog || sPlayerbotAIConfig.engineDebugLogFile.empty())
+            return;
+
+        std::ostringstream engineOut;
+        engineOut << sPlayerbotAIConfig.GetTimestampStr()
+                  << ",bot=" << ai->GetBot()->GetName()
+                  << ",action=" << action
+                  << ",rel=-1.000"
+                  << ",stage=TRACE"
+                  << ",reason=" << SanitizeEngineLogField(reason);
+
+        if (wo)
+            engineOut << ",obj=" << SanitizeEngineLogField(ChatHelper::formatWorldobject(wo));
+
+        sPlayerbotAIConfig.log(sPlayerbotAIConfig.engineDebugLogFile, "%s", engineOut.str().c_str());
+    }
+}
+
 bool AddLootAction::Execute(Event& event)
 {
     ObjectGuid guid = event.getObject();
@@ -36,6 +78,8 @@ bool AddAllLootAction::Execute(Event& event)
     if (!text.empty())
     {
         std::list<ObjectGuid> objects = ChatHelper::parseGameobjects(text);
+        if (objects.empty())
+            TraceLootReason(ai, requester, getName(), "no parsed objects");
 
         for (auto& guid : objects)
             added |= AddLoot(requester, guid);
@@ -49,6 +93,9 @@ bool AddAllLootAction::Execute(Event& event)
         std::list<ObjectGuid> corpses = context->GetValue<std::list<ObjectGuid>>("nearest corpses")->Get();
         for (std::list<ObjectGuid>::iterator i = corpses.begin(); i != corpses.end(); i++)
             added |= AddLoot(requester, *i);
+
+        if (gos.empty() && corpses.empty())
+            TraceLootReason(ai, requester, getName(), "no nearby loot candidates");
     }
 
     return added;
@@ -82,6 +129,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
         else
             ai->TellDebug(requester, "for trying to add loot from " + ChatHelper::formatWorldobject(wo), "debug loot");
 
+        TraceLootReason(ai, requester, getName(), "missing world object", wo);
         return false;
     }
     else
@@ -92,18 +140,21 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
     if (loot.IsEmpty())
     {
         ai->TellDebug(requester, "Loot object is empty.", "debug loot");
+        TraceLootReason(ai, requester, getName(), "empty loot", wo);
         return false;
     }
 
     if (abs(wo->GetPositionZ() - bot->GetPositionZ()) > INTERACTION_DISTANCE)
     {
         ai->TellDebug(requester, "Object too high or low.", "debug loot");
+        TraceLootReason(ai, requester, getName(), "z distance too large", wo);
         return false;
     }
 
     if (!loot.IsLootPossible(bot))
     {
         ai->TellDebug(requester, "Looting is not possible.", "debug loot");
+        TraceLootReason(ai, requester, getName(), "loot not possible", wo);
         return false;
     }
 
@@ -124,6 +175,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
             && group->GetLooterGuid() != bot->GetObjectGuid())
         {
             ai->TellDebug(requester, "Not master looter.", "debug loot");
+            TraceLootReason(ai, requester, getName(), "blocked by master looter", wo);
             return false;
         }
 
@@ -151,6 +203,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
     if (sServerFacade.GetDistance2d(requester, wo) > lootDistanceToUse)
     {
         ai->TellDebug(requester, "Outside of loot range: " + std::to_string(lootDistanceToUse), "debug loot");
+        TraceLootReason(ai, requester, getName(), "outside loot range", wo);
         return false;
     }
 
@@ -166,6 +219,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
             std::ostringstream out;
             out << hostiles.front()->GetName() << " is blocking " << wo->GetName() << ", need to kill it or I will not loot";
             ai->TellError(requester, out.str());
+            TraceLootReason(ai, requester, getName(), "blocked by nearby hostile", wo);
             return false;
         }
     }
@@ -189,6 +243,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
             if (usedBagSpacePercent > 99)
             {
                 ai->TellPlayer(requester, "Can not loot quest item, my bags are full", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+                TraceLootReason(ai, requester, getName(), "bags full with quest loot pending", wo);
                 return false;
             }
 
@@ -197,6 +252,7 @@ bool AddAllLootAction::AddLoot(Player* requester, ObjectGuid guid)
         if (usedBagSpacePercent > 99)
         {
             ai->TellError(requester, "There is some loot but I do not have free bag space, so not looting");
+            TraceLootReason(ai, requester, getName(), "bags full", wo);
             return false;
         }
     }
@@ -209,17 +265,35 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
     LootObject loot(bot, guid);
 
     WorldObject *wo = loot.GetWorldObject(bot);
-    if (loot.IsEmpty() || !wo)
+    if (!wo)
+    {
+        TraceLootReason(ai, requester, getName(), "missing world object");
         return false;
+    }
+
+    if (loot.IsEmpty())
+    {
+        TraceLootReason(ai, requester, getName(), "empty loot", wo);
+        return false;
+    }
 
     if (!sServerFacade.IsWithinLOSInMap(bot, wo))
+    {
+        TraceLootReason(ai, requester, getName(), "no line of sight", wo);
         return false;
+    }
 
     if (loot.skillId == SKILL_NONE)
+    {
+        TraceLootReason(ai, requester, getName(), "not a gathering node", wo);
         return false;
+    }
 
     if (!loot.IsLootPossible(bot))
+    {
+        TraceLootReason(ai, requester, getName(), "loot not possible", wo);
         return false;
+    }
 
     float gatheringDistanceToUse = sPlayerbotAIConfig.gatheringDistance;
 
@@ -250,6 +324,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
 
     if (sServerFacade.GetDistance2d(requester, wo) > gatheringDistanceToUse)
     {
+        TraceLootReason(ai, requester, getName(), "outside gathering range", wo);
         return false;
     }
 
@@ -273,6 +348,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
             std::ostringstream out;
             out << hostiles.front()->GetName() << " is blocking " << wo->GetName() << ", need to kill it or I will not gather";
             ai->TellError(requester, out.str());
+            TraceLootReason(ai, requester, getName(), "blocked by nearby hostile", wo);
             return false;
         }
     }
@@ -283,6 +359,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
             std::ostringstream out;
             out << strongHostiles.front()->GetName() << " is blocking " << wo->GetName() << ", need to kill it or I will not gather";
             ai->TellError(requester, out.str());
+            TraceLootReason(ai, requester, getName(), "blocked by strong hostiles", wo);
             return false;
         }
     }
@@ -306,6 +383,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
             if (usedBagSpacePercent > 99)
             {
                 ai->TellPlayer(requester, "Can not loot quest item, my bags are full", PlayerbotSecurityLevel::PLAYERBOT_SECURITY_ALLOW_ALL, false);
+                TraceLootReason(ai, requester, getName(), "bags full with quest loot pending", wo);
                 return false;
             }
 
@@ -314,6 +392,7 @@ bool AddGatheringLootAction::AddLoot(Player* requester, ObjectGuid guid)
         if (usedBagSpacePercent > 99)
         {
             ai->TellError(requester, "There is some loot but I do not have free bag space, so not looting");
+            TraceLootReason(ai, requester, getName(), "bags full", wo);
             return false;
         }
     }
