@@ -8,6 +8,7 @@
 #include "PlayerbotSecurity.h"
 #include "PlayerbotTextMgr.h"
 #include "BotState.h"
+#include "PlayerbotBehavior.h"
 #include "BotArchetype.h"
 #include "PlayerTalentSpec.h"
 #include <stack>
@@ -744,6 +745,10 @@ public:
     std::vector<std::pair<std::string, std::string>> SaveFrameworkState() const;
     void LoadFrameworkState(const std::unordered_map<std::string, std::string>& values);
     void NormalizeFrameworkState();
+    const BehaviorFrame& GetBehaviorFrame() const { return behaviorFrame; }
+    void SetBehaviorFrame(const BehaviorFrame& frame);
+    void ClearBehaviorFrame();
+    std::string GetBehaviorKey() const;
     const ControlLaneState& GetControlLaneState() const { return controlLaneState; }
     bool UsesLegacyControlAuthority() const { return controlLaneState.authorityMode == ControlAuthorityMode::LEGACY_FULL; }
     bool UsesRefreshedControlAuthority() const { return controlLaneState.authorityMode == ControlAuthorityMode::REFRESHED_WITH_OVERRIDE; }
@@ -798,6 +803,9 @@ protected:
     BotSession botSession = {};
     CommittedTask committedTask = {};
     std::unordered_map<uint32, time_t> questLogTimestamps = {};
+    // The behavior frame stores the normalized planning key documented in
+    // BotStateModel.txt. It is descriptive scaffolding for future planner work.
+    BehaviorFrame behaviorFrame = {};
     ControlLaneState controlLaneState = {};
     bool m_recordMessages = false;
     std::vector<std::string> m_recordedMessages;

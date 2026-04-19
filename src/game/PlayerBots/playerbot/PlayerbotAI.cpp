@@ -462,6 +462,11 @@ std::vector<std::pair<std::string, std::string>> PlayerbotAI::SaveFrameworkState
 {
     return {
         {"framework.archetype", BotArchetypeToString(archetype)},
+        {"framework.behavior_state", BehaviorStateToString(behaviorFrame.state)},
+        {"framework.behavior_coordination", BehaviorCoordinationToString(behaviorFrame.coordination)},
+        {"framework.behavior_task", BehaviorTaskToString(behaviorFrame.task)},
+        {"framework.behavior_stage", behaviorFrame.stage},
+        {"framework.behavior_focus", behaviorFrame.focus},
         {"framework.authority_mode", ControlAuthorityModeToString(controlLaneState.authorityMode)},
         {"framework.combat_profile", controlLaneState.combatProfile},
         {"framework.movement_profile", controlLaneState.movementProfile},
@@ -497,6 +502,19 @@ void PlayerbotAI::LoadFrameworkState(const std::unordered_map<std::string, std::
         const BotArchetype loadedArchetype = BotArchetypeFromString(archetypeItr->second);
         ApplyArchetype(loadedArchetype, AiFactory::GetArchetypeWeights(loadedArchetype));
     }
+
+    auto behaviorStateItr = values.find("framework.behavior_state");
+    if (behaviorStateItr != values.end())
+        behaviorFrame.state = BehaviorStateFromString(behaviorStateItr->second);
+
+    behaviorFrame.coordination = BehaviorCoordinationFromString(
+        ParseStringWithAliasesOrDefault(values, { "framework.behavior_coordination", "behavior_coordination" },
+        BehaviorCoordinationToString(behaviorFrame.coordination)));
+    behaviorFrame.task = BehaviorTaskFromString(
+        ParseStringWithAliasesOrDefault(values, { "framework.behavior_task", "behavior_task" },
+        BehaviorTaskToString(behaviorFrame.task)));
+    behaviorFrame.stage = ParseStringWithAliasesOrDefault(values, { "framework.behavior_stage", "behavior_stage" }, behaviorFrame.stage);
+    behaviorFrame.focus = ParseStringWithAliasesOrDefault(values, { "framework.behavior_focus", "behavior_focus" }, behaviorFrame.focus);
 
     controlLaneState.authorityMode = ControlAuthorityModeFromString(ParseStringWithAliasesOrDefault(
         values,
@@ -541,6 +559,9 @@ void PlayerbotAI::NormalizeFrameworkState()
     if (!committedTask.ValidateTarget(this, time(nullptr), 0))
         committedTask.Clear();
 
+    if (behaviorFrame.state == BotState::BOT_STATE_ALL)
+        behaviorFrame.state = currentState;
+
     if (botSession.state != SessionState::IDLE && committedTask.purpose == TravelDestinationPurpose::None)
         botSession.Reset(SessionState::IDLE);
 
@@ -552,6 +573,27 @@ void PlayerbotAI::NormalizeFrameworkState()
         controlLaneState.routeProfile = "custom";
     if (controlLaneState.reactionProfile.empty())
         controlLaneState.reactionProfile = "standard";
+}
+
+void PlayerbotAI::SetBehaviorFrame(const BehaviorFrame& frame)
+{
+    behaviorFrame = frame;
+    if (behaviorFrame.state == BotState::BOT_STATE_ALL)
+        behaviorFrame.state = currentState;
+}
+
+void PlayerbotAI::ClearBehaviorFrame()
+{
+    behaviorFrame.Clear(currentState);
+}
+
+std::string PlayerbotAI::GetBehaviorKey() const
+{
+    BehaviorFrame frame = behaviorFrame;
+    if (frame.state == BotState::BOT_STATE_ALL)
+        frame.state = currentState;
+
+    return FormatBehaviorFrame(frame);
 }
 
 namespace
@@ -2543,6 +2585,7 @@ void PlayerbotAI::ChangeEngine(BotState type)
     {
         currentEngine = engine;
         currentState = type;
+        behaviorFrame.state = type;
         ReInitCurrentEngine();
 
         switch (type)

@@ -180,6 +180,101 @@ namespace
         return entry == travelTarget->GetEntry();
     }
 
+    bool IsQuestObjectiveTarget(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        if (!ai || !guidP)
+            return false;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return false;
+
+        for (GuidPosition const& objective : context->GetValue<std::list<GuidPosition>>("active quest objectives")->Get())
+        {
+            if (objective == guidP)
+                return true;
+        }
+
+        return false;
+    }
+
+    bool IsFreshQuestBootstrapBot(PlayerbotAI* ai)
+    {
+        if (!ai)
+            return false;
+
+        Player* bot = ai->GetBot();
+        if (!bot)
+            return false;
+
+        // Starter bots should feel like fresh players first: pick up and hand in
+        // nearby quest work before the broader RPG umbrella starts competing.
+        if (ai->HasRealPlayerMaster() || bot->GetGroup())
+            return false;
+
+        return bot->GetLevel() <= 10;
+    }
+
+    bool HasQuestBootstrapTargets(PlayerbotAI* ai, TravelTarget* travelTarget)
+    {
+        if (!ai)
+            return false;
+
+        AiObjectContext* context = ai->GetAiObjectContext();
+        if (!context)
+            return false;
+
+        if (!context->GetValue<std::list<GuidPosition>>("active quest givers")->Get().empty())
+            return true;
+
+        if (!context->GetValue<std::list<GuidPosition>>("active quest takers")->Get().empty())
+            return true;
+
+        if (!context->GetValue<std::list<GuidPosition>>("active quest objectives")->Get().empty())
+            return true;
+
+        return travelTarget && travelTarget->GetDestination() &&
+            dynamic_cast<QuestRelationTravelDestination*>(travelTarget->GetDestination());
+    }
+
+    bool IsQuestBootstrapTarget(PlayerbotAI* ai, GuidPosition const& guidP, TravelTarget* travelTarget)
+    {
+        return IsQuestInteractionTarget(ai, guidP) || IsQuestObjectiveTarget(ai, guidP) ||
+            IsTravelQuestNpc(travelTarget, guidP);
+    }
+
+    std::string GetQuestBootstrapStage(PlayerbotAI* ai, GuidPosition const& guidP)
+    {
+        if (!ai || !guidP)
+            return "progress";
+
+        const int32 entry = guidP.IsCreature() ? guidP.GetEntry() : -1 * static_cast<int32>(guidP.GetEntry());
+        const std::string qualifier = std::to_string(entry);
+
+        if (ai->GetAiObjectContext()->GetValue<bool>("can turn in quest npc", qualifier)->Get())
+            return "turn-in";
+
+        if (ai->GetAiObjectContext()->GetValue<bool>("can accept quest npc", qualifier)->Get() ||
+            ai->GetAiObjectContext()->GetValue<bool>("can accept quest low level npc", qualifier)->Get())
+            return "accept";
+
+        return "progress";
+    }
+
+    std::string GetBehaviorFocus(GuidPosition const& guidP, Player* bot)
+    {
+        if (!guidP)
+            return "";
+
+        if (bot)
+        {
+            if (WorldObject* object = guidP.GetWorldObject(bot->GetInstanceId()))
+                return object->GetName();
+        }
+
+        return guidP.to_string();
+    }
+
     std::string FormatSocialTargetBreakdown(PlayerbotAI* ai, GuidPosition const& guidP)
     {
         SocialTargetBreakdown breakdown = GetSocialTargetBreakdown(ai, guidP);
@@ -244,6 +339,7 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
     focusQuestTravelList focusList = AI_VALUE(focusQuestTravelList, "focus travel target");
     GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
+    const bool questBootstrapMode = IsFreshQuestBootstrapBot(ai) && HasQuestBootstrapTargets(ai, travelTarget);
 
     GuidPosition masterRpgTarget;
     if (requester && ai->IsSafe(requester) && requester->GetPlayerbotAI())
@@ -338,10 +434,20 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
             SkipRpgTarget("not found on map/instance.");       
 
         bool isTravelTarget = (guidP.GetEntry() == travelTarget->GetEntry());
+        const bool questInteractionTarget = IsQuestInteractionTarget(ai, guidP);
+        const bool questObjectiveTarget = IsQuestObjectiveTarget(ai, guidP);
+        const bool questTravelNpc = IsTravelQuestNpc(travelTarget, guidP);
+        const bool questBootstrapTarget = questInteractionTarget || questObjectiveTarget || questTravelNpc;
 
         //Stop to save peformance.
         if (checked >= maxCheck && !isTravelTarget)
             continue;
+
+        // During the starter quest bootstrap we only want the nearby quest lane to
+        // compete here; vendor/social/trainer targets can wait until the bot has
+        // actually entered the early quest loop.
+        if (questBootstrapMode && !questBootstrapTarget)
+            SkipRpgTarget("Fresh quest bootstrap keeps only quest targets.");
 
         //Check if we are allowed to move to this position. This is based on movement strategies follow, free, guard, stay. Bots are limited to finding targets near the center of those movement strategies.
         //For bots with real players they are also slightly limited in range unless the player stands still for a while. See free move values.
@@ -405,8 +511,6 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
         //For all rpg actions that are triggered/possible for this target get the highest relevance.
         float relevance = getMaxRelevance(guidP);
         relevance += GetSocialTargetBonus(ai, guidP);
-        const bool questInteractionTarget = IsQuestInteractionTarget(ai, guidP);
-        const bool questTravelNpc = IsTravelQuestNpc(travelTarget, guidP);
 
         //If this rpg target is our travel target increase the relevance by 50% to make it more likely to be picked.
         if (isTravelTarget)
@@ -435,6 +539,9 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
         // Floor it at 50 so the NPC survives pruning and RPG can attempt interaction.
         if (questTravelNpc && relevance < 50.0f)
             relevance = 50.0f;
+
+        if (questBootstrapMode && questBootstrapTarget)
+            relevance = std::max(relevance, 220.0f);
 
         //If we already had a different target with a relevance above 1 and this only has 1 (trivial) skip this target.
         if (!hasGoodRelevance || relevance > 1.0f)
@@ -637,7 +744,8 @@ bool ChooseRpgTargetAction::Execute(Event& event)
     }
 
     GuidPosition currentRpgTarget = AI_VALUE(GuidPosition, "rpg target");
-    if (currentRpgTarget && targets.find(currentRpgTarget) != targets.end() && IsQuestInteractionTarget(ai, currentRpgTarget))
+    if (currentRpgTarget && targets.find(currentRpgTarget) != targets.end() &&
+        IsQuestBootstrapTarget(ai, currentRpgTarget, AI_VALUE(TravelTarget*, "travel target")))
     {
         SET_AI_VALUE(GuidPosition, "rpg target", currentRpgTarget);
         AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target").clear();
@@ -739,6 +847,17 @@ bool ChooseRpgTargetAction::Execute(Event& event)
     //Save the current rpg target and the ignorelist.
     SET_AI_VALUE(GuidPosition, "rpg target", guidP);
     ignoreList.clear();
+
+    if (IsFreshQuestBootstrapBot(ai) && IsQuestBootstrapTarget(ai, guidP, AI_VALUE(TravelTarget*, "travel target")))
+    {
+        BehaviorFrame frame = ai->GetBehaviorFrame();
+        frame.state = BotState::BOT_STATE_NON_COMBAT;
+        frame.coordination = BehaviorCoordination::SOLO;
+        frame.task = BehaviorTask::QUEST;
+        frame.stage = GetQuestBootstrapStage(ai, guidP);
+        frame.focus = GetBehaviorFocus(guidP, bot);
+        ai->SetBehaviorFrame(frame);
+    }
 
     return true;
 }

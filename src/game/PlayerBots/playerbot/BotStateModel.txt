@@ -1,0 +1,433 @@
+BotState Model
+
+This document defines the working behavior model for playerbot planning.
+It is intentionally architecture-first rather than file-first.
+
+Runtime Source
+
+BotState.h defines the runtime states as:
+
+- BOT_STATE_COMBAT
+- BOT_STATE_NON_COMBAT
+- BOT_STATE_DEAD
+- BOT_STATE_REACTION
+- BOT_STATE_ALL
+
+For this model:
+
+- COMBAT maps to CO
+- NON_COMBAT maps to NC
+- DEAD maps to DEAD
+- REACTION maps to REACT
+- ALL is not a runtime state tree; it is meta/cross-state only
+
+Core Planning Rule
+
+Behavior should be modeled as:
+
+- choose intent first
+- then choose target and method
+- then validate whether the action is currently possible
+- then move if needed
+- then execute
+
+This keeps travel as movement support instead of letting it become the top-level planner.
+
+Canonical Planning Key
+
+The planning identity for a bot action can be written as:
+
+state / coordination / task / stage / focus
+
+Examples:
+
+- NC / solo / quest / accept / Marshal Dughan
+- NC / group / quest / progress / Hogger
+- NC / solo / maintenance / repair / Smith Argus
+- CO / group / quest / progress / Hogger
+- DEAD / group / quest / progress / Hogger
+
+Interpretation:
+
+- state
+  - NC, CO, DEAD, REACT
+- coordination
+  - solo, group
+- task
+  - quest, maintenance, skills, social, economy, gather, idle
+- stage
+  - task-specific phase such as accept, progress, turn in, repair, mail, herb
+- focus
+  - the concrete target, area, object, npc, mob, or leader-directed objective
+
+Bot Behavior Model
+
+Bot Behavior Model
+|
++- State Trees
+|  |
+|  +- NC
+|  |  |
+|  |  +- 1. Select Task
+|  |  |  |
+|  |  |  +- 1. quest
+|  |  |  |  +- accept
+|  |  |  |  +- progress
+|  |  |  |  +- turn in
+|  |  |  |
+|  |  |  +- 2. maintenance
+|  |  |  |  +- food/drink
+|  |  |  |  +- buff upkeep
+|  |  |  |  +- repair
+|  |  |  |  +- sell junk
+|  |  |  |  +- restock
+|  |  |  |  +- bag cleanup
+|  |  |  |
+|  |  |  +- 3. skills
+|  |  |  |  +- class trainer
+|  |  |  |  +- profession trainer
+|  |  |  |  +- profession progression
+|  |  |  |  +- weapon skills
+|  |  |  |
+|  |  |  +- 4. social
+|  |  |  |  +- emote
+|  |  |  |  +- greet
+|  |  |  |  +- group/guild interaction
+|  |  |  |  +- rpg chatter
+|  |  |  |
+|  |  |  +- 5. economy
+|  |  |  |  +- vendor
+|  |  |  |  +- mail
+|  |  |  |  +- bank
+|  |  |  |  +- auction
+|  |  |  |  +- profession support
+|  |  |  |
+|  |  |  +- 6. gather
+|  |  |  |  +- herb
+|  |  |  |  +- mine
+|  |  |  |  +- skin
+|  |  |  |  +- open resource object
+|  |  |  |
+|  |  |  +- 7. group
+|  |  |  |  +- follow leader
+|  |  |  |  +- regroup
+|  |  |  |  +- meet party
+|  |  |  |  +- wait for group
+|  |  |  |  +- assist party objective
+|  |  |  |  +- party travel coordination
+|  |  |  |
+|  |  |  +- 8. idle/default
+|  |  |     +- no strong task selected
+|  |  |     +- baseline world behavior
+|  |  |
+|  |  +- 2. Select Target / Method
+|  |  |  +- choose target
+|  |  |  +- choose interaction type
+|  |  |
+|  |  +- 3. Validate Actionability
+|  |  |  +- target valid
+|  |  |  +- method valid
+|  |  |  +- in range
+|  |  |  +- line of sight
+|  |  |  +- reachable enough to attempt
+|  |  |  +- bot can do it now
+|  |  |
+|  |  +- 4. Reposition / Travel
+|  |  |  +- local reposition
+|  |  |  +- movement mode
+|  |  |  +- long-distance relocation
+|  |  |  +- movement failure handling
+|  |  |
+|  |  +- 5. Execute Action
+|  |     +- interact / use / talk / loot / gather / buy / train
+|  |
+|  +- CO
+|  |  |
+|  |  +- 1. Select Combat Intent
+|  |  |  +- defend self
+|  |  |  +- defend group
+|  |  |  +- kill quest target
+|  |  |  +- kill drop target
+|  |  |  +- clear blocker
+|  |  |
+|  |  +- 2. Select Combat Target / Method
+|  |  +- 3. Validate Combat Actionability
+|  |  +- 4. Reposition In Combat
+|  |  +- 5. Execute Combat Action
+|  |
+|  +- DEAD
+|  |  |
+|  |  +- 1. Select Recovery Task
+|  |  |  +- corpse run
+|  |  |  +- spirit heal
+|  |  |  +- recover from bad state
+|  |  |  +- return to safe/actionable state
+|  |  |
+|  |  +- 2. Select Recovery Target / Method
+|  |  +- 3. Validate Recovery Actionability
+|  |  +- 4. Reposition / Recovery Travel
+|  |  +- 5. Execute Recovery Action
+|  |
+|  +- REACT
+|     |
+|     +- 1. Select Reaction Intent
+|     |  +- emergency survival
+|     |  +- help ally
+|     |  +- respond to emote/event
+|     |
+|     +- 2. Select Reaction Target / Method
+|     +- 3. Validate Reaction Actionability
+|     +- 4. Reposition If Needed
+|     +- 5. Execute Reaction
+|
++- Mode Overlays
+|  |
+|  +- dungeon
+|  |  +- modifies NC priorities
+|  |  +- modifies CO combat behavior
+|  |  +- modifies DEAD recovery behavior
+|  |  +- modifies REACT emergency behavior
+|  |
+|  +- raid
+|  +- battleground
+|  +- escort
+|  +- vehicle
+|
++- Class Overlays
+|  |
+|  +- hunter
+|  +- warrior
+|  +- rogue
+|  +- priest
+|  +- mage
+|  +- druid
+|  +- paladin
+|  +- shaman
+|  +- warlock
+|
++- Support Overlays
+   |
+   +- prerequisites
+   +- multipliers
+   +- session/commitment policy
+   +- debug/telemetry
+
+Group Context Slice
+
+Group is selected as an NC task family, but it also exports shared context to the other states.
+
+NC.group produces:
+
+- who is leader?
+- who do I follow?
+- where is the rally point?
+- what is the party objective?
+- what is my role?
+
+That context is then consumed by:
+
+- CO
+  - assist leader target
+  - defend group member
+  - clear blocker on party path
+  - hold formation instead of solo chasing
+- DEAD
+  - recover toward party location
+  - rejoin party after revive
+- REACT
+  - retreat with group
+  - help threatened ally
+  - respond to party emergency context
+
+Design Notes
+
+- travel is not a top-level planner
+  - it belongs under Reposition / Travel
+- group is an NC task family and a cross-state context producer
+- dungeon is not an NC task family
+  - it is a mode overlay that changes behavior across NC, CO, DEAD, and REACT
+- combat-support belongs in CO, not NC
+- recovery belongs in DEAD, not NC
+- food and buff upkeep belong under maintenance
+- loot is usually a target/method or follow-up action, not a top-level task family
+
+Usage Rule
+
+When diagnosing behavior or deciding where logic should live:
+
+- first identify the state
+- then identify coordination
+- then identify the selected task
+- then identify the task stage
+- then identify the concrete focus
+
+After that, classify the logic by step:
+
+- Select Task
+- Select Target / Method
+- Validate Actionability
+- Reposition / Travel
+- Execute Action
+
+Normalized NC Task Table
+
+This table normalizes the major NC task families into the canonical planning key:
+
+state / coordination / task / stage / focus
+
+NC quest
+
+- accept
+  - example: NC / solo / quest / accept / quest giver
+  - focus examples: Marshal Dughan, wanted poster, breadcrumb npc
+- progress
+  - example: NC / solo / quest / progress / quest objective
+  - focus examples: Hogger, Defias Trapper, quest chest, objective area
+- turn in
+  - example: NC / solo / quest / turn in / quest taker
+  - focus examples: Eagan Peltskinner, quest chain npc
+
+NC maintenance
+
+- food/drink
+  - example: NC / solo / maintenance / food-drink / self
+- buff upkeep
+  - example: NC / solo / maintenance / buff-upkeep / self
+- repair
+  - example: NC / solo / maintenance / repair / repair vendor
+- sell junk
+  - example: NC / solo / maintenance / sell-junk / vendor
+- restock
+  - example: NC / solo / maintenance / restock / supplier
+- bag cleanup
+  - example: NC / solo / maintenance / bag-cleanup / inventory
+
+NC skills
+
+- class trainer
+  - example: NC / solo / skills / class-trainer / class trainer npc
+- profession trainer
+  - example: NC / solo / skills / profession-trainer / profession trainer npc
+- profession progression
+  - example: NC / solo / skills / profession-progress / recipe source
+- weapon skills
+  - example: NC / solo / skills / weapon-skills / weapon trainer npc
+
+NC social
+
+- emote
+  - example: NC / solo / social / emote / nearby player
+- greet
+  - example: NC / solo / social / greet / nearby player
+- group/guild interaction
+  - example: NC / group / social / group-guild-interaction / party member
+- rpg chatter
+  - example: NC / solo / social / rpg-chatter / nearby npc
+
+NC economy
+
+- vendor
+  - example: NC / solo / economy / vendor / vendor npc
+- mail
+  - example: NC / solo / economy / mail / mailbox
+- bank
+  - example: NC / solo / economy / bank / banker
+- auction
+  - example: NC / solo / economy / auction / auctioneer
+- profession support
+  - example: NC / solo / economy / profession-support / anvil or loom
+
+NC gather
+
+- herb
+  - example: NC / solo / gather / herb / herb node
+- mine
+  - example: NC / solo / gather / mine / mining node
+- skin
+  - example: NC / solo / gather / skin / skinnable corpse
+- open resource object
+  - example: NC / solo / gather / open-resource-object / chest or salvage object
+
+NC group
+
+- follow leader
+  - example: NC / group / group / follow-leader / party leader
+- regroup
+  - example: NC / group / group / regroup / rally point
+- meet party
+  - example: NC / group / group / meet-party / party location
+- wait for group
+  - example: NC / group / group / wait-for-group / rally point
+- assist party objective
+  - example: NC / group / group / assist-party-objective / leader focus
+- party travel coordination
+  - example: NC / group / group / party-travel-coordination / shared destination
+
+NC idle/default
+
+- idle
+  - example: NC / solo / idle / idle / self
+- default follow
+  - example: NC / group / idle / default-follow / master
+- baseline world behavior
+  - example: NC / solo / idle / baseline-world-behavior / local ambient context
+
+Normalized CO Task Table
+
+This table extends the same planning key into combat:
+
+state / coordination / task / stage / focus
+
+CO defend
+
+- defend self
+  - example: CO / solo / defend / self / current attacker
+- defend group
+  - example: CO / group / defend / group / threatened ally
+- defend leader
+  - example: CO / group / defend / leader / leader attacker
+
+CO assist
+
+- assist leader target
+  - example: CO / group / assist / leader-target / leader focus
+- assist party objective
+  - example: CO / group / assist / party-objective / objective mob
+- assist kill target
+  - example: CO / solo / assist / kill-target / selected hostile
+
+CO quest-combat
+
+- kill quest target
+  - example: CO / solo / quest-combat / kill-quest-target / Hogger
+- kill drop target
+  - example: CO / solo / quest-combat / kill-drop-target / Gnoll
+- clear blocker
+  - example: CO / group / quest-combat / clear-blocker / path hostile
+
+CO control
+
+- peel
+  - example: CO / group / control / peel / hostile on healer
+- interrupt
+  - example: CO / solo / control / interrupt / casting hostile
+- crowd control
+  - example: CO / group / control / crowd-control / extra add
+
+CO survival
+
+- stabilize
+  - example: CO / solo / survival / stabilize / self
+- disengage
+  - example: CO / solo / survival / disengage / escape route
+- hold line
+  - example: CO / group / survival / hold-line / current formation anchor
+
+CO role-played combat context
+
+- tank line
+  - example: CO / group / role / tank-line / primary target
+- healer protection
+  - example: CO / group / role / healer-protection / threatening hostile
+- ranged support
+  - example: CO / group / role / ranged-support / assist target
